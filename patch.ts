@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * omp zh-CN patcher — translates display-only string literals inside the
- * bundled `dist/cli.js` of @oh-my-pi/pi-coding-agent (18.2.1).
+ * bundled `dist/cli.js` of @oh-my-pi/pi-coding-agent (18.2.2).
  *
  * Model
  * -----
@@ -119,7 +119,7 @@ const MUTATE_CALLS: Record<string, true> = {
 };
 /**
  * Theme/style helpers whose string arguments are rendered, verified against
- * the 18.2.1 bundle: `fg`/`bold`/`dim`/`showStatus`/`showWarning`/... all
+ * the 18.2.2 bundle: `fg`/`bold`/`dim`/`showStatus`/`showWarning`/... all
  * forward their text to the TUI. Minified names (`st`, `ts`, ...) are NOT
  * listed here even when they look display-ish — several of them are pure
  * data transforms (`e_`, `sZ`), so a name-based guess is unsafe at bundle

@@ -1,5 +1,5 @@
 /**
- * Audit pass 2 — classify every dict-matched literal in the 18.2.1 bundle and
+ * Audit pass 2 — classify every dict-matched literal in the 18.2.2 bundle and
  * produce translate / ban lists with per-key evidence for manual review.
  */
 import { parse } from "@babel/parser";
