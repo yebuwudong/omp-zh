@@ -7,7 +7,7 @@
 ├── omp-zh.sh                     一键入口：apply / restore / verify / report / status
 ├── patch.ts                      补丁器（AST 分类 + 词典替换 + 校验）
 ├── dict.json                     2129 条英→中映射（源自 oh-my-pi-cn 汉化分支）
-├── dict-extra.json               1769 条补充映射（其中 1608 条生效，161 条为品牌名占位）
+├── dict-extra.json               2698 条补充映射
 ├── manifest.json                 本次应用清单（键、译文、位置、校验和）
 ├── backup/cli.js.orig-pristine   官方原始产物（还原用）
 ├── report-translate.tsv          已翻译清单（3029 键 / 3816 处）
@@ -51,8 +51,8 @@ cd ~/omp-zh && ./omp-zh.sh apply
 - 欢迎屏：`欢迎回来！`、`提示`、`LSP 服务器`、`最近会话`、快捷键说明
 - 首次启动向导与供应商登录流程的说明文字
 - 状态栏通知、错误与警告文案、斜杠命令描述与状态（`loop 循环：关闭`、`循环：已暂停`…）
-- 欢迎屏随机 Tip 正文（27 条中 26 条）
-- 约 3030 个界面字符串，覆盖 3840 处调用点
+- 欢迎屏随机 Tip 正文（27 条全部）
+- 约 4827 个界面字符串
 
 **不汉化**（有意保留英文）：
 
@@ -62,7 +62,6 @@ cd ~/omp-zh && ./omp-zh.sh apply
 | 枚举与协议值 | `low`/`high`/`xhigh`、`braille`、`rebuild`、`true`/`false` | 参与 `===` 比较、`switch` 分支与持久化，翻译会破坏逻辑 |
 | 设置分组标识 | `TAB_GROUPS` 数组与 `ui.group` | 排序用 `indexOf` 字符串匹配，必须两侧一致 |
 | 命令与参数名 | `--auto-approve`、`/settings` | 输入标识符 |
-| CLI `--help` 全文 | flag 说明 | 上游汉化分支同样未覆盖 |
 | 用户数据 | 模型名、提供商名、版本号、工作目录 | 运行时数据，非界面文案 |
 
 ## 安全设计
