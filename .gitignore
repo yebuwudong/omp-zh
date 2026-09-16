@@ -1,0 +1,18 @@
+# 运行时备份与产物（含上游闭源压缩包）
+backup/
+manifest.json
+report-*.tsv
+report-*.txt
+review-*.txt
+fragments-list.txt
+fragments-covered.json
+
+# 工作过程分片
+*-chunk-*.json
+gaps-*.json
+frags-*.json
+translated-*.json
+curated-*.json
+glossary.json
+
+node_modules/
