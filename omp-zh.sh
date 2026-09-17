@@ -80,7 +80,8 @@ status)
 	else
 		echo "汉化状态:      未应用（官方英文版）"
 	fi
-	echo "备份:          $(ls "$HERE"/backup/*.orig-* 2>/dev/null | head -1 || echo '（无）')"
+	b=$(cd "$HERE" && bun patch.ts list 2>/dev/null | head -1)
+	echo "备份:          ${b:-（无）}"
 	;;
 *)
 	echo "用法: $0 {apply|restore|verify|test|report|status}" >&2
