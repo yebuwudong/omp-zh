@@ -10,7 +10,23 @@
 set -euo pipefail
 
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-CLI="/home/yebu/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
+
+if ! command -v bun >/dev/null 2>&1; then
+	echo "需要 bun（https://bun.sh）：bun 未安装或不在 PATH 中" >&2
+	exit 1
+fi
+
+# 依赖只用于解析产物 AST；缺失时自动补齐（首次运行需要网络）
+if [[ ! -d "$HERE/node_modules/@babel/parser" ]]; then
+	echo "首次运行：安装依赖……"
+	(cd "$HERE" && bun install --silent) || {
+		echo "依赖安装失败，请手动执行：cd $HERE && bun install" >&2
+		exit 1
+	}
+fi
+
+# omp 安装路径由 patch.ts 自行探测（OMP_PKG 可覆盖）
+CLI="$(cd "$HERE" && bun run patch.ts path)"
 
 run_patch() {
 	cd "$HERE"

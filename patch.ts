@@ -35,16 +35,48 @@
  *   bun patch.ts apply     backup + rewrite bundle in place
  *   bun patch.ts verify    re-parse patched bundle, assert rewrite invariants
  *   bun patch.ts restore   restore newest backup
+ *   bun patch.ts path      print the resolved omp cli.js location
  */
 
 import { parse } from "@babel/parser";
 import * as crypto from "node:crypto";
+import { existsSync, realpathSync } from "node:fs";
+import * as os from "node:os";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { locateTemplates } from "./tools/patch-templates";
 
-const PKG = "/home/yebu/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent";
-const CLI_PATH = path.join(PKG, "dist/cli.js");
+/**
+ * Locate the installed omp bundle. Resolution order:
+ *   1. `OMP_PKG` env override (points at the package root or cli.js)
+ *   2. the `omp` launcher on PATH (symlink -> .../dist/cli.js)
+ *   3. bun's global install directory
+ * A missing bundle is a hard error only when a command actually touches it;
+ * `path` still answers for scripts that need to know where omp lives.
+ */
+const resolveCliPath = (): string => {
+	const candidates: string[] = [];
+	const envPkg = process.env.OMP_PKG;
+	if (envPkg) {
+		candidates.push(envPkg.endsWith(".js") ? envPkg : path.join(envPkg, "dist", "cli.js"));
+	}
+	const fromPath = Bun.which("omp");
+	if (fromPath) {
+		try {
+			candidates.push(realpathSync(fromPath));
+		} catch {
+			candidates.push(fromPath);
+		}
+	}
+	candidates.push(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@oh-my-pi", "pi-coding-agent", "dist", "cli.js"));
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) return candidate;
+	}
+	return candidates[candidates.length - 1];
+};
+
+const CLI_PATH = resolveCliPath();
+const PKG = path.dirname(path.dirname(CLI_PATH));
 const WORK = import.meta.dir;
 const DICT_PATH = path.join(WORK, "dict.json");
 const DICT_EXTRA_PATH = path.join(WORK, "dict-extra.json");
@@ -1487,6 +1519,9 @@ const probe = async (keys: string[]): Promise<void> => {
 };
 
 const command = process.argv[2] ?? "report";
+if (command === "path") {
+	console.log(CLI_PATH);
+} else
 if (command === "report") await report();
 else if (command === "apply") await apply();
 else if (command === "verify") await verify();
@@ -1494,6 +1529,6 @@ else if (command === "restore") await restore();
 else if (command === "list") await listBackups();
 else if (command === "probe") await probe(process.argv.slice(3));
 else {
-	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe)`);
+	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe|path)`);
 	process.exit(1);
 }
