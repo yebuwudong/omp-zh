@@ -131,7 +131,11 @@ const migrateBackups = async (): Promise<void> => {
 		if (path.resolve(entry.dir) === primary) continue;
 		const dest = path.join(primary, entry.name);
 		if (await Bun.file(dest).exists()) continue;
+		// Preserve mtime: restore ranks backups by it, and a fresh copyFile
+		// timestamp would make an old bundle look like the newest one.
 		await fs.copyFile(path.join(entry.dir, entry.name), dest);
+		const srcStat = await fs.stat(path.join(entry.dir, entry.name));
+		await fs.utimes(dest, srcStat.atime, srcStat.mtime);
 	}
 };
 
@@ -1513,11 +1517,22 @@ const restore = async (): Promise<void> => {
 	await migrateBackups();
 	const backups = await listBackupEntries();
 	if (backups.length === 0) throw new Error(`no backups found in ${backupDirs().join(" or ")}`);
-	// Pick by mtime, not filename: "orig-<timestamp>" sorts after
-	// "orig-pristine" lexicographically, which previously resurrected the
-	// oldest backup onto a newer installation.
-	const newestEntry = backups.sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
-	const newest = path.join(newestEntry.dir, newestEntry.name);
+	// Guard against version regressions: a stale backup (e.g. 18.2.1 sitting
+	// next to a freshly upgraded 18.2.4 install) must never be written back.
+	// The package.json version is the source of truth; prefer the newest
+	// backup that embeds it.
+	const pkgVersion = await Bun.file(path.join(PKG, "package.json")).json()
+		.then((p: { version?: string }) => p.version)
+		.catch(() => undefined);
+	const ranked = backups.sort((a, b) => b.mtimeMs - a.mtimeMs);
+	let chosen = ranked[0];
+	if (pkgVersion) {
+		for (const entry of ranked) {
+			const head = await Bun.file(path.join(entry.dir, entry.name)).slice(0, 4_000_000).text();
+			if (head.includes(`"${pkgVersion}"`)) { chosen = entry; break; }
+		}
+	}
+	const newest = path.join(chosen.dir, chosen.name);
 	const data = await Bun.file(newest).text();
 	const mode = (await fs.stat(CLI_PATH).mode & 0o777) || 0o755;
 	await Bun.write(CLI_PATH, data);
