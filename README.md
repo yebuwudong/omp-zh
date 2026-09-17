@@ -3,24 +3,47 @@
 把已安装的官方 omp（18.2.x）界面汉化为简体中文，**不改变版本、不替换安装、不动运行时结构**。
 
 ```
-~/omp-zh/
+~/.omp-zh/
+├── install.sh                    一行命令入口（curl | bash）
 ├── omp-zh.sh                     一键入口：apply / restore / verify / report / status
-├── patch.ts                      补丁器（AST 分类 + 词典替换 + 校验）
+├── patch.ts                      补丁器（AST 分类 + 词典替换 + 锚点自动适配 + 校验）
 ├── dict.json                     2129 条英→中映射（源自 oh-my-pi-cn 汉化分支）
-├── dict-extra.json               2698 条补充映射
-├── manifest.json                 本次应用清单（键、译文、位置、校验和）
-├── backup/cli.js.orig-pristine   官方原始产物（还原用）
-├── report-translate.tsv          已翻译清单（3029 键 / 3816 处）
-├── report-translate-detail.txt   逐条上下文证据
-├── review-translate.txt          人工审核稿
+├── dict-extra.json               2700 条补充映射
 ├── analysis/                     侦察与词典构建脚本
-└── tools/                        审计、实测、回退验证脚本（含 patch-templates.ts 模板包裹）
+└── tools/                        审计、实测、回退验证脚本
+    ├── loose-anchor.ts           锚点通配匹配（重打包重命名自动适配）
+    └── patch-templates.ts        模板字面量包裹
+
+备份位于 <omp>/dist/.omp-zh-backup/（跟着安装走，多份 clone 共享）
+```
+
+## 快速开始（一行命令，始终用最新补丁）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yebuwudong/omp-zh/main/install.sh | bash
+```
+
+自动 clone/更新补丁仓库到 `~/.omp-zh`、补齐依赖并应用汉化。**omp 升级后重跑同一行命令即可**——
+每次都会拉取最新补丁（含新版本适配），无需手动改任何东西。
+
+```bash
+# 查看状态 / 还原英文 / 完整校验
+curl -fsSL https://raw.githubusercontent.com/yebuwudong/omp-zh/main/install.sh | bash -s -- status
+curl -fsSL https://raw.githubusercontent.com/yebuwudong/omp-zh/main/install.sh | bash -s -- restore
+curl -fsSL https://raw.githubusercontent.com/yebuwudong/omp-zh/main/install.sh | bash -s -- test
+```
+
+或手动 clone（等价）：
+
+```bash
+git clone https://github.com/yebuwudong/omp-zh.git ~/.omp-zh
+cd ~/.omp-zh && ./omp-zh.sh apply
 ```
 
 ## 日常使用
 
 ```bash
-cd ~/omp-zh
+cd ~/.omp-zh
 ./omp-zh.sh status     # 查看当前汉化状态
 ./omp-zh.sh restore    # 还原成官方英文版
 ./omp-zh.sh apply      # 重新应用汉化
