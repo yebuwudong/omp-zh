@@ -16,6 +16,7 @@
  */
 
 import * as path from "node:path";
+import { matchLoose } from "./loose-anchor";
 
 export interface TemplateTarget {
 	/** Human label for reports. */
@@ -37,10 +38,6 @@ export const TEMPLATE_TARGETS: readonly TemplateTarget[] = [
 		name: "settings footer hint (jump variant)",
 		anchor: "`Enter/Space to change \\xB7 ${this.#a?",
 	},
-	{
-		name: "help extra text (env vars / tools / plugin options)",
-		anchor: "`${W.bold(\"Environment Variables:\")}",
-	},
 ];
 
 export interface WrapOp {
@@ -54,12 +51,28 @@ export const locateTemplates = (code: string): { ops: WrapOp[]; missing: string[
 	const ops: WrapOp[] = [];
 	const missing: string[] = [];
 	for (const target of TEMPLATE_TARGETS) {
-		const idx = code.indexOf(target.anchor);
+		let idx = code.indexOf(target.anchor);
 		if (idx === -1) {
-			missing.push(`${target.name} (anchor not found)`);
-			continue;
-		}
-		if (code.indexOf(target.anchor, idx + 1) !== -1) {
+			// Minified identifiers are renamed on every release; retry with the
+			// wildcard matcher and rewrite the anchor so the search below still
+			// finds the template's opening backtick.
+			const loose = matchLoose(code, target.anchor);
+			if (loose.length === 0) {
+				missing.push(`${target.name} (anchor not found)`);
+				continue;
+			}
+			if (loose.length > 1) {
+				missing.push(`${target.name} (anchor not unique: ${loose.length})`);
+				continue;
+			}
+			idx = loose[0].start;
+			const backtick = code.indexOf("`", idx);
+			if (backtick === -1 || backtick - idx > target.anchor.length + 40) {
+				missing.push(`${target.name} (loose anchor has no template backtick)`);
+				continue;
+			}
+			idx = backtick;
+		} else if (code.indexOf(target.anchor, idx + 1) !== -1) {
 			missing.push(`${target.name} (anchor not unique)`);
 			continue;
 		}

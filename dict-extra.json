@@ -2696,5 +2696,7 @@
  "Export bundled subagents to ": "将内置子代理导出到 ",
  "Create a shell shortcut": "创建 shell 快捷方式",
  "Anthropic Foundry base URL (e.g., https://": "Anthropic Foundry 基础 URL（例如 https://",
- "Anthropic token used as Authorization: Bearer ": "Foundry 模式下用作 Authorization: Bearer 的 Anthropic 令牌 "
+ "Anthropic token used as Authorization: Bearer ": "Foundry 模式下用作 Authorization: Bearer 的 Anthropic 令牌 ",
+ "Collab: hosting (": "协作：托管中（",
+ " guests)": " 位访客）"
 }

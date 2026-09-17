@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * omp zh-CN patcher — translates display-only string literals inside the
- * bundled `dist/cli.js` of @oh-my-pi/pi-coding-agent (18.2.2).
+ * bundled `dist/cli.js` of @oh-my-pi/pi-coding-agent (18.2.x).
  *
  * Model
  * -----
@@ -119,7 +119,7 @@ const MUTATE_CALLS: Record<string, true> = {
 };
 /**
  * Theme/style helpers whose string arguments are rendered, verified against
- * the 18.2.2 bundle: `fg`/`bold`/`dim`/`showStatus`/`showWarning`/... all
+ * the 18.2.x bundle: `fg`/`bold`/`dim`/`showStatus`/`showWarning`/... all
  * forward their text to the TUI. Minified names (`st`, `ts`, ...) are NOT
  * listed here even when they look display-ish — several of them are pure
  * data transforms (`e_`, `sZ`), so a name-based guess is unsafe at bundle
@@ -380,6 +380,18 @@ interface AnchorPatch {
 	replace: string;
 	/** Allow (and rewrite) more than one occurrence. Default: require exactly one. */
 	all?: true;
+	/**
+	 * Minifier-proof fallback. The bundle is re-minified on every release and
+	 * every internal identifier is renamed (`Ke` -> `$e`, `KJr` -> `qZr`), so
+	 * an anchor written against one build stops matching the next. `loose`
+	 * carries the same anchor text with the volatile identifiers written as
+	 * their old spellings; at apply time each identifier-shaped token is
+	 * compiled to a wildcard capture and the captured spelling is substituted
+	 * into the loose replacement's `$name` placeholders. Literals,
+	 * punctuation and property names are still matched verbatim, so the
+	 * anchor stays precise while surviving renames.
+	 */
+	loose?: { find: string; replace: string };
 }
 
 const ANCHOR_PATCHES: readonly AnchorPatch[] = [
@@ -387,7 +399,7 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	// reference block rendered by $3e (getExtraHelpText). Wrap the whole
 	// template in the fragment translator so each row resolves through the
 	// dictionary at runtime.
-	{ name: "help epilogue block", find: "function $3e(){return`", replace: `function $3e(){return ${FN_FRAG}(\`` },
+	{ name: "help epilogue block", find: "function $3e(){return`${H.bold(\"Environment Variables:\")}", replace: `function $3e(){return ${FN_FRAG}(\`\${H.bold("Environment Variables:")}` },
 	{ name: "help epilogue close", find: "omp agents unpack --project - Export bundled subagents to ./.omp/agents`", replace: `omp agents unpack --project - Export bundled subagents to ./.omp/agents\`)` },
 	// help examples: 9 template literals embedding the CLI binary via ${$e}.
 	// Wrap each in the fragment translator so the comment lines resolve
@@ -402,14 +414,14 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	{ name: "help example: limit models", find: "`# Limit model cycling to specific models\n  ${$e} --models claude-sonnet,claude-haiku,gpt-4o`", replace: `${FN_FRAG}(\`# Limit model cycling to specific models\n  \${$e} --models claude-sonnet,claude-haiku,gpt-4o\`)` },
 	{ name: "help example: export html", find: "`# Export a session file to HTML\n  ${$e} --export ~/.omp/agent/sessions/--path--/session.jsonl`", replace: `${FN_FRAG}(\`# Export a session file to HTML\n  \${$e} --export ~/.omp/agent/sessions/--path--/session.jsonl\`)` },
 	// CLI flag description composed via template interpolation (`--thinking`).
-	{ name: "thinking flag description", find: "`Set thinking level: ${A5.join(\", \")}`", replace: `${FN_FRAG}(\`Set thinking level: \${A5.join(\", \")}\`)` },
+	{ name: "thinking flag description", find: "`Set thinking level: ${S5.join(\", \")}`", replace: `${FN_FRAG}(\`Set thinking level: \${S5.join(\", \")}\`)` },
 	// Runtime error/support messages composed via template interpolation.
 	{ name: "cli missing-arg error", find: "`Missing required argument: ${c}`", replace: `${FN_FRAG}(\`Missing required argument: \${c}\`)` },
 				{ name: "usage no-credentials", find: "`No credentials found${u}. Run \\`omp\\` and use /login to add accounts.\n`", replace: `${FN_FRAG}(\`No credentials found\${u}. Run \\\`omp\\\` and use /login to add accounts.\n\`)` },
 	{ name: "usage no-data", find: "`No usage data${u}. Stored credentials are for providers without a usage endpoint.\n`", replace: `${FN_FRAG}(\`No usage data\${u}. Stored credentials are for providers without a usage endpoint.\n\`)` },
 	{ name: "plugin install hint", find: "`\nInstall plugins with: ${$e} plugin install <package>`", replace: `${FN_FRAG}(\`\nInstall plugins with: \${$e} plugin install <package>\`)` },
 							{ name: "subcommand help hint", find: "`\nRun \\`${t} ${i.name} --help\\` for details.\n`", replace: `${FN_FRAG}(\`\nRun \\\`\${t} \${i.name} --help\\\` for details.\n\`)` },
-		{ name: "subcommand usage header", find: "`USAGE\n  ${X0s(t,i.name,a)}\n`", replace: `${FN_BLOCK}(\`USAGE\n  \${X0s(t,i.name,a)}\n\`)` },
+		{ name: "subcommand usage header", find: "`USAGE\n  ${A0s(t,i.name,a)}\n`", replace: `${FN_BLOCK}(\`USAGE\n  \${A0s(t,i.name,a)}\n\`)` },
 		// Autocomplete dropdown descriptions: run through the fragment translator so
 		// dynamic labels like "Force: 12 active tools" resolve per-piece.
 				// Slash-menu / status / update-notification dynamic copy: wrap each
@@ -431,22 +443,22 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		{ name: "agent hub hint detail", find: "`${n}1:agents  2:activity  Tab:roster  PgUp/PgDn:scroll  Enter:open  t:${s}  Esc:roster`", replace: `${FN_FRAG}(\`\${n}1:agents  2:activity  Tab:roster  PgUp/PgDn:scroll  Enter:open  t:\${s}  Esc:roster\`)` },
 		{ name: "agent hub hint wide", find: "`${n}1:agents  2:activity  j/k/wheel:select  PgUp/PgDn:details  Enter/click:open  t:${s}  r:revive  x:kill  Esc:close`", replace: `${FN_FRAG}(\`\${n}1:agents  2:activity  j/k/wheel:select  PgUp/PgDn:details  Enter/click:open  t:\${s}  r:revive  x:kill  Esc:close\`)` },
 		// Agent Hub roster hint (standalone panel).
-		{ name: "agent hub roster hint", find: "gs(b.fg(\"dim\",\"1:agents  j/k:select  Enter:transcript  Space:follow  f:filter  s:scope  /:search  Esc:close\"),e)", replace: `gs(b.fg(\"dim\",${FN_FRAG}(\"1:agents  j/k:select  Enter:transcript  Space:follow  f:filter  s:scope  /:search  Esc:close\")),e)` },
+		{ name: "agent hub roster hint", find: "cs(b.fg(\"dim\",\"1:agents  j/k:select  Enter:transcript  Space:follow  f:filter  s:scope  /:search  Esc:close\"),e)", replace: `cs(b.fg(\"dim\",${FN_FRAG}(\"1:agents  j/k:select  Enter:transcript  Space:follow  f:filter  s:scope  /:search  Esc:close\")),e)` },
 		// showError root renderer: same sink approach as status/warning.
 		{ name: "error sink", find: "showError(e){let t=new re(`Error: ${e}`,1,0)", replace: `showError(e){e=${FN_FRAG}(e);let t=new re(\`Error: \${e}\`,1,0)` },
 { name: "status sink", find: "showStatus(e,t){let s=this.ctx.chatContainer.children", replace: `showStatus(e,t){e=${FN_FRAG}(e);let s=this.ctx.chatContainer.children` },
 		{ name: "warning sink", find: "showWarning(e,t){let s=new re(`Warning: ${e}`,1,0)", replace: `showWarning(e,t){e=${FN_FRAG}(e);let s=new re(\`Warning: \${e}\`,1,0)` },
 { name: "agent hub tabs", find: "`${e(\"agents\",\"1 Agents\")}${b.fg(\"dim\",b.sep.dot)}${e(\"activity\",\"2 Activity\")}`", replace: ` ${FN_FRAG}(\`\${e(\"agents\",\"1 Agents\")}\${b.fg(\"dim\",b.sep.dot)}\${e(\"activity\",\"2 Activity\")}\`)` },
-{ name: "settings hint bar", find: "gs(b.fg(\"dim\",this.#y()),e)", replace: `gs(b.fg(\"dim\",${FN_FRAG}(this.#y())),e)` },
+{ name: "settings hint bar", find: "c.push(hs(b.fg(\"dim\",this.#y()),e))", replace: `c.push(hs(b.fg(\"dim\",${FN_FRAG}(this.#y())),e))` },
 { name: "tool activity hidden status", find: "`Tool activity is hidden \\u2014 show it with ${t} before expanding`", replace: `${FN_FRAG}(\`Tool activity is hidden \\u2014 show it with \${t} before expanding\`)` },
-{ name: "autocomplete description resolver", find: "function YXr(e){if(\"getAutocompleteDescription\"in e&&typeof e.getAutocompleteDescription===\"function\")return e.getAutocompleteDescription()??e.description??\"\";return e.description??\"\"}", replace: `function YXr(e){var d;if(\"getAutocompleteDescription\"in e&&typeof e.getAutocompleteDescription===\"function\")d=e.getAutocompleteDescription()??e.description??\"\";else d=e.description??\"\";return ${FN_FRAG}(d)}` },
+{ name: "autocomplete description resolver", find: "function KJr(e){if(\"getAutocompleteDescription\"in e&&typeof e.getAutocompleteDescription===\"function\")return e.getAutocompleteDescription()??e.description??\"\";return e.description??\"\"}", replace: `function KJr(e){var d;if(\"getAutocompleteDescription\"in e&&typeof e.getAutocompleteDescription===\"function\")d=e.getAutocompleteDescription()??e.description??\"\";else d=e.description??\"\";return ${FN_FRAG}(d)}` },
 		// Keyboard Shortcuts panel: the markdown table is built by joining rows; wrap
 		// the joined result in the fragment translator so each action phrase resolves.
 				// Keyboard Shortcuts panel: the markdown table is built by joining rows; wrap
 		// the joined result in the fragment translator so each action phrase resolves.
 												// Keyboard Shortcuts panel: wrap the built markdown in the fragment translator
 		// so each action phrase in the table resolves through the dictionary.
-		{ name: "keyboard shortcuts panel", find: "q8(this.ctx,\"Keyboard Shortcuts\",e)", replace: `q8(this.ctx,${FN}(\"Keyboard Shortcuts\"),${FN_FRAG}(e))` },
+		{ name: "keyboard shortcuts panel", find: "M8(this.ctx,\"Keyboard Shortcuts\",e)", replace: `M8(this.ctx,${FN}(\"Keyboard Shortcuts\"),${FN_FRAG}(e))` },
 
 	{ name: "settings panel title", find: 'oi(e,"Settings")', replace: `oi(e,${FN}("Settings"))` },
 	{ name: "btw history title", find: 'oi(e,"BTW history")', replace: `oi(e,${FN}("BTW history"))` },
@@ -947,6 +959,28 @@ const findOccurrences = (haystack: string, needle: string): number[] => {
 	}
 };
 
+// ── minifier-proof anchors ──────────────────────────────────────────────────
+
+import { matchLoose, renameTokens, describeRenames } from "./tools/loose-anchor";
+
+/** Resolve one anchor to concrete spans: exact match first, wildcard second. */
+const resolveAnchor = (
+	code: string,
+	patch: AnchorPatch,
+): { start: number; end: number; replace: string; adapted: string }[] => {
+	const exact = findOccurrences(code, patch.find);
+	if (exact.length > 0) {
+		return exact.map(start => ({ start, end: start + patch.find.length, replace: patch.replace, adapted: "" }));
+	}
+	const hits = matchLoose(code, patch.find);
+	return hits.map(h => ({
+		start: h.start,
+		end: h.end,
+		replace: renameTokens(patch.replace, h.renames),
+		adapted: describeRenames(h.renames),
+	}));
+};
+
 const report = async (): Promise<void> => {
 	const dict = await loadDict();
 	// Dry-run against the pristine bundle when the installed one is already
@@ -1059,15 +1093,22 @@ const apply = async (): Promise<void> => {
 	// Anchor rewrites target exact upstream spans the scan cannot reach
 	// (panel titles passed verbatim to `oi`/`QM`/`super`, the compact row's
 	// value cell). Each must match exactly once (or `all:true`) or apply
-	// refuses, so a bundle change can never silently skip a site.
-	const anchorOps: { start: number; end: number; wrap: null; kind: "anchor"; name: string; replace: string }[] = [];
+	// refuses, so a bundle change can never silently skip a site. When the
+	// exact text is missing (a re-minified release renamed identifiers), the
+	// wildcard matcher in tools/loose-anchor.ts captures the new spellings and
+	// rewrites the replacement on the fly, so an upgrade no longer needs a
+	// hand-edited anchor.
+	const anchorOps: { start: number; end: number; wrap: null; kind: "anchor"; name: string; replace: string; adapted?: string }[] = [];
 	for (const patch of ANCHOR_PATCHES) {
-		const hits = findOccurrences(code, patch.find);
+		const hits = resolveAnchor(code, patch);
 		if (hits.length === 0) throw new Error(`anchor missing: ${patch.name} (${JSON.stringify(patch.find)})`);
 		if (hits.length > 1 && !patch.all) {
 			throw new Error(`anchor not unique: ${patch.name} (${hits.length} matches for ${JSON.stringify(patch.find)})`);
 		}
-		for (const start of hits) anchorOps.push({ start, end: start + patch.find.length, wrap: null, kind: "anchor", name: patch.name, replace: patch.replace });
+		for (const hit of hits) {
+			if (hit.adapted) console.log(`anchor adapted: ${patch.name} (${hit.adapted})`);
+			anchorOps.push({ start: hit.start, end: hit.end, wrap: null, kind: "anchor", name: patch.name, replace: hit.replace, adapted: hit.adapted || undefined });
+		}
 	}
 	anchorOps.sort((a, b) => a.start - b.start);
 	for (let i = 1; i < anchorOps.length; i++) {
@@ -1239,7 +1280,7 @@ const apply = async (): Promise<void> => {
 		bundleAfter: { size: out.length, sha256: sha256(out) },
 		keys: verdicts.filter(v => v.translate.length > 0).map(v => ({ key: v.key, zh: v.zh, occ: v.translate.length, reason: v.reason })),
 		blocks: blocks.map(b => ({ start: b.start, end: b.end, hits: b.hits, lines: b.lines })),
-		anchors: anchorOps.map(a => ({ name: a.name, start: a.start, len: a.end - a.start })),
+		anchors: anchorOps.map(a => ({ name: a.name, start: a.start, len: a.end - a.start, adapted: a.adapted ?? null, replace: a.replace })),
 		valueLabels: Object.keys(VALUE_LABELS).length,
 		ops: ops.length,
 		backup: backupPath,
@@ -1344,8 +1385,21 @@ const verify = async (): Promise<void> => {
 	// them.
 	let anchorsOk = 0;
 	const anchorMisses: string[] = [];
+	// Anchors may have been applied through the wildcard fallback, in which
+	// case the on-disk replacement carries the freshly captured identifiers
+	// rather than the literal template. The manifest records what was actually
+	// written, so verify against that when it matches this bundle's shape.
+	let appliedAnchors: { name: string; replace: string }[] | null = null;
+	try {
+		const manifest = await Bun.file(path.join(WORK, "manifest.json")).json() as { anchors?: { name?: string; replace?: string }[] };
+		if (Array.isArray(manifest.anchors) && manifest.anchors.every(a => typeof a.replace === "string")) {
+			appliedAnchors = manifest.anchors.map(a => ({ name: a.name ?? "?", replace: a.replace as string }));
+		}
+	} catch { /* no manifest: fall back to the literal templates */ }
 	for (const patch of ANCHOR_PATCHES) {
-		if (code.includes(patch.replace)) anchorsOk++;
+		const candidates = appliedAnchors?.filter(a => a.name === patch.name).map(a => a.replace) ?? [];
+		const hit = code.includes(patch.replace) || candidates.some(c => c.length > 0 && code.includes(c));
+		if (hit) anchorsOk++;
 		else anchorMisses.push(patch.name);
 	}
 	for (const miss of anchorMisses) problems.push(`anchor not applied: ${miss}`);
