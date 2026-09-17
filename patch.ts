@@ -1577,6 +1577,12 @@ const probe = async (keys: string[]): Promise<void> => {
 const command = process.argv[2] ?? "report";
 if (command === "path") {
 	console.log(CLI_PATH);
+} else if (command === "migrate") {
+	const before = await listBackupEntries();
+	await migrateBackups();
+	const after = await listBackupEntries();
+	const copied = after.length - before.length;
+	console.log(`backups: ${after.length} in ${PRIMARY_BACKUP_DIR}${copied > 0 ? ` (+${copied} migrated)` : ""}`);
 } else
 if (command === "report") await report();
 else if (command === "apply") await apply();
