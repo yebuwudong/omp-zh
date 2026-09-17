@@ -80,7 +80,63 @@ const PKG = path.dirname(path.dirname(CLI_PATH));
 const WORK = import.meta.dir;
 const DICT_PATH = path.join(WORK, "dict.json");
 const DICT_EXTRA_PATH = path.join(WORK, "dict-extra.json");
-const BACKUP_DIR = path.join(WORK, "backup");
+// Backups live next to the installed bundle, not inside the patch repo:
+// multiple clones of this repo can manage the same omp install, and the
+// pristine copy must stay reachable no matter which clone applied the patch.
+// Earlier releases kept them under the repo (`<repo>/backup`); that location
+// stays readable so existing installs keep working, and the first write
+// migrates them next to the bundle.
+const PRIMARY_BACKUP_DIR = process.env.OMP_ZH_BACKUP ?? path.join(path.dirname(CLI_PATH), ".omp-zh-backup");
+const LEGACY_BACKUP_DIR = path.join(WORK, "backup");
+
+/** Directories that may hold backups, primary first. */
+const backupDirs = (): string[] => {
+	const dirs = [PRIMARY_BACKUP_DIR];
+	if (path.resolve(LEGACY_BACKUP_DIR) !== path.resolve(PRIMARY_BACKUP_DIR)) dirs.push(LEGACY_BACKUP_DIR);
+	return dirs;
+};
+
+const listBackupEntries = async (): Promise<{ dir: string; name: string; mtimeMs: number }[]> => {
+	const out: { dir: string; name: string; mtimeMs: number }[] = [];
+	for (const dir of backupDirs()) {
+		const entries = await fs.readdir(dir).catch(() => [] as string[]);
+		for (const name of entries) {
+			if (!name.startsWith("cli.js.orig-")) continue;
+			const stat = await fs.stat(path.join(dir, name)).catch(() => null);
+			if (stat) out.push({ dir, name, mtimeMs: stat.mtimeMs });
+		}
+	}
+	return out;
+};
+
+/** Path of the pristine bundle, wherever it currently lives. */
+const pristinePath = async (): Promise<string | null> => {
+	for (const dir of backupDirs()) {
+		const candidate = path.join(dir, "cli.js.orig-pristine");
+		if (await Bun.file(candidate).exists()) return candidate;
+	}
+	return null;
+};
+
+/**
+ * Copy every backup found in a legacy location into the primary
+ * (bundle-adjacent) directory. Without this, a second clone of the repo sees
+ * "汉化已应用" but has no pristine copy to restore from, and `apply` dies.
+ * Runs before any command that reads backups.
+ */
+const migrateBackups = async (): Promise<void> => {
+	const primary = path.resolve(PRIMARY_BACKUP_DIR);
+	await fs.mkdir(primary, { recursive: true });
+	for (const entry of await listBackupEntries()) {
+		if (path.resolve(entry.dir) === primary) continue;
+		const dest = path.join(primary, entry.name);
+		if (await Bun.file(dest).exists()) continue;
+		await fs.copyFile(path.join(entry.dir, entry.name), dest);
+	}
+};
+
+// Backups may live in either directory. Computed on demand in each command.
+const BACKUP_DIR = PRIMARY_BACKUP_DIR;
 
 const FN = "__omp_i18n_t";
 const FN_BLOCK = "__omp_i18n_block";
@@ -1014,15 +1070,16 @@ const resolveAnchor = (
 };
 
 const report = async (): Promise<void> => {
+	await migrateBackups();
 	const dict = await loadDict();
 	// Dry-run against the pristine bundle when the installed one is already
 	// patched: on a patched file every wrapped call arg is a dict key again,
 	// which double-classifies targets and buries the real verdicts.
-	const pristine = path.join(BACKUP_DIR, "cli.js.orig-pristine");
+	const pristine = await pristinePath();
 	const installed = await Bun.file(CLI_PATH).text();
-	const usePristine = installed.includes(`var ${DICT_VAR}=`) && (await Bun.file(pristine).exists());
-	const code = await Bun.file(usePristine ? pristine : CLI_PATH).text();
-	if (usePristine) console.log(`(installed bundle is patched — reporting on ${path.basename(pristine)})\n`);
+	const usePristine = installed.includes(`var ${DICT_VAR}=`) && pristine !== null;
+	const code = await Bun.file(usePristine ? pristine as string : CLI_PATH).text();
+	if (usePristine) console.log(`(installed bundle is patched — reporting on ${path.basename(pristine as string)})\n`);
 	const { occurrences, totalLiterals, dictMatched } = scanBundle(code, dict);
 	const verdicts = decideAll(occurrences, dict);
 	const blocks = findBlocks(code, dict);
@@ -1110,6 +1167,7 @@ const collectOps = (verdicts: KeyVerdict[], blocks: BlockRewrite[]): RewriteOp[]
 };
 
 const apply = async (): Promise<void> => {
+	await migrateBackups();
 	const dict = await loadDict();
 	const code = await Bun.file(CLI_PATH).text();
 	if (code.includes(`var ${DICT_VAR}=`)) {
@@ -1282,13 +1340,11 @@ const apply = async (): Promise<void> => {
 
 	const codeHash = sha256(code);
 	await fs.mkdir(BACKUP_DIR, { recursive: true });
-	const existing = await fs.readdir(BACKUP_DIR).catch(() => [] as string[]);
 	let backupPath: string | null = null;
-	for (const entry of existing) {
-		if (!entry.includes(".orig")) continue;
-		const candidate = Bun.file(path.join(BACKUP_DIR, entry));
+	for (const entry of await listBackupEntries()) {
+		const candidate = Bun.file(path.join(entry.dir, entry.name));
 		if (await candidate.exists() && sha256(await candidate.text()) === codeHash) {
-			backupPath = path.join(BACKUP_DIR, entry);
+			backupPath = path.join(entry.dir, entry.name);
 			break;
 		}
 	}
@@ -1454,15 +1510,14 @@ const verify = async (): Promise<void> => {
 };
 
 const restore = async (): Promise<void> => {
-	const entries = await fs.readdir(BACKUP_DIR).catch(() => [] as string[]);
-	const backups = entries.filter(e => e.startsWith("cli.js.orig-"));
-	if (backups.length === 0) throw new Error("no backups found in " + BACKUP_DIR);
+	await migrateBackups();
+	const backups = await listBackupEntries();
+	if (backups.length === 0) throw new Error(`no backups found in ${backupDirs().join(" or ")}`);
 	// Pick by mtime, not filename: "orig-<timestamp>" sorts after
 	// "orig-pristine" lexicographically, which previously resurrected the
 	// oldest backup onto a newer installation.
-	const newest = path.join(BACKUP_DIR, (await Promise.all(
-		backups.map(async e => ({ e, m: (await fs.stat(path.join(BACKUP_DIR, e))).mtimeMs }))
-	)).sort((a, b) => b.m - a.m)[0].e);
+	const newestEntry = backups.sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
+	const newest = path.join(newestEntry.dir, newestEntry.name);
 	const data = await Bun.file(newest).text();
 	const mode = (await fs.stat(CLI_PATH).mode & 0o777) || 0o755;
 	await Bun.write(CLI_PATH, data);
@@ -1471,10 +1526,10 @@ const restore = async (): Promise<void> => {
 };
 
 const listBackups = async (): Promise<void> => {
-	const entries = await fs.readdir(BACKUP_DIR).catch(() => [] as string[]);
-	for (const e of entries.filter(e => e.startsWith("cli.js.orig-")).sort()) {
-		const s = await fs.stat(path.join(BACKUP_DIR, e));
-		console.log(`${e}  ${(s.size / 1e6).toFixed(2)}MB  ${s.mtime.toISOString()}`);
+	const entries = await listBackupEntries();
+	for (const entry of entries.sort((a, b) => b.mtimeMs - a.mtimeMs)) {
+		const s = await fs.stat(path.join(entry.dir, entry.name));
+		console.log(`${entry.name}  ${(s.size / 1e6).toFixed(2)}MB  ${s.mtime.toISOString()}  ${entry.dir}`);
 	}
 };
 
@@ -1486,15 +1541,16 @@ const listBackups = async (): Promise<void> => {
  * with evidence instead of guesswork.
  */
 const probe = async (keys: string[]): Promise<void> => {
+	await migrateBackups();
 	if (keys.length === 0) {
 		console.error("usage: bun patch.ts probe <en-key> [more keys...]");
 		process.exitCode = 1;
 		return;
 	}
 	const dict = await loadDict();
-	const pristine = path.join(BACKUP_DIR, "cli.js.orig-pristine");
-	if (!(await Bun.file(pristine).exists())) {
-		console.error(`pristine backup missing: ${pristine}`);
+	const pristine = await pristinePath();
+	if (pristine === null) {
+		console.error(`pristine backup missing in ${backupDirs().join(" or ")}`);
 		process.exitCode = 1;
 		return;
 	}
