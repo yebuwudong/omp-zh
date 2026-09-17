@@ -1,6 +1,10 @@
 # omp 中文界面汉化（18.2.x）
 
+[![LINUX DO](https://img.shields.io/badge/社区-LINUX%20DO-blue)](https://linux.do)
+
 把已安装的官方 omp（18.2.x）界面汉化为简体中文，**不改变版本、不替换安装、不动运行时结构**。
+本项目已链接认可 [LINUX DO](https://linux.do) 社区，并参与其
+[开源推广](https://linux.do/t/topic/1776670)。
 
 ```
 ~/.omp-zh/
