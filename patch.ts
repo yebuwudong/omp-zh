@@ -1199,6 +1199,15 @@ const apply = async (): Promise<void> => {
 	// hand-edited anchor.
 	const anchorOps: { start: number; end: number; wrap: null; kind: "anchor"; name: string; replace: string; adapted?: string }[] = [];
 	const obsoleteAnchors: string[] = [];
+	// Keys recovered from a broken anchor: upstream refactored the call shape
+	// but the literal is still there in a display position the scan can see
+	// (e.g. `ev(e,"Models",s)` -> `new UPe("Models",{...})`). Wrapping those
+	// spans keeps the translation alive without a hand-edited anchor.
+	const rescuedKeys = new Set<string>();
+	const rescuedOps: { start: number; end: number; key: string }[] = [];
+	const RESCUE_SAFE = (role: string): boolean =>
+		DIRECT_ROLES[role] === true || role === "arrayElem" || role === "other" ||
+		role === "groupKey" || role === "groupArrayElem";
 	for (const patch of ANCHOR_PATCHES) {
 		const hits = resolveAnchor(code, patch);
 		if (hits.length === 0) {
@@ -1215,6 +1224,21 @@ const apply = async (): Promise<void> => {
 			if (covered) {
 				console.warn(`anchor obsolete (key covered by scan): ${patch.name}`);
 				obsoleteAnchors.push(patch.name);
+				continue;
+			}
+			// Rescue: every key this anchor carried must appear in the bundle
+			// with only display-safe roles. Then the scan positions carry the
+			// translation and the anchor itself is obsolete.
+			const keyOccs = keys.map(k => ({ key: k, occs: occurrences.get(k) ?? [] }));
+			const rescuable = keyOccs.length > 0 &&
+				keyOccs.every(({ occs }) => occs.length > 0 && occs.every(o => RESCUE_SAFE(o.role)));
+			if (rescuable) {
+				for (const { key, occs } of keyOccs) {
+					if (rescuedKeys.has(key)) continue;
+					rescuedKeys.add(key);
+					for (const o of occs) rescuedOps.push({ start: o.start, end: o.end, key });
+				}
+				console.warn(`anchor rescued (key wrapped at scan position): ${patch.name}`);
 				continue;
 			}
 			throw new Error(`anchor missing: ${patch.name} (${JSON.stringify(patch.find)})`);
@@ -1250,6 +1274,7 @@ const apply = async (): Promise<void> => {
 	const allOps: { start: number; end: number; wrap: string | null; kind: "literal" | "template" | "anchor"; name?: string; replace?: string }[] = [
 		...anchorOps,
 		...ops.map(o => ({ start: o.start, end: o.end, wrap: (o.key === "<block>" ? FN_BLOCK : FN) as string | null, kind: "literal" as const })),
+		...rescuedOps.map(o => ({ start: o.start, end: o.end, wrap: FN as string | null, kind: "literal" as const })),
 		...tmplOps.map(o => ({ start: o.start, end: o.end, wrap: FN_FRAG as string | null, kind: "template" as const })),
 	];
 	allOps.sort((a, b) => a.start - b.start || b.end - a.end);
@@ -1397,6 +1422,7 @@ const apply = async (): Promise<void> => {
 		blocks: blocks.map(b => ({ start: b.start, end: b.end, hits: b.hits, lines: b.lines })),
 		anchors: anchorOps.map(a => ({ name: a.name, start: a.start, len: a.end - a.start, adapted: a.adapted ?? null, replace: a.replace })),
 		obsoleteAnchors,
+		rescuedKeys: [...rescuedKeys],
 		valueLabels: Object.keys(VALUE_LABELS).length,
 		ops: ops.length,
 		backup: backupPath,
