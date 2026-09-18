@@ -566,9 +566,14 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	{ name: "raw provider stream title", find: 'oi(this.#u,"Raw Provider Stream")', replace: `oi(this.#u,${FN}("Raw Provider Stream"))` },
 	{ name: "extension control center title", find: 'oi(e,"Extension Control Center")', replace: `oi(e,${FN}("Extension Control Center"))` },
 	// Table headers drawn by `QM` (bordered table chrome).
-	{ name: "agent hub table title", find: 'ev(e,"Agent Hub",o)', replace: `ev(e,${FN}("Agent Hub"),o)` },
-	{ name: "models table title", find: 'ev(e,"Models",s)', replace: `ev(e,${FN}("Models"),s)` },
-	{ name: "agents table title", find: 'ev(e,"Agents",s)', replace: `ev(e,${FN}("Agents"),s)` },
+	// Table/sidebar titles: upstream moved these from a helper call
+	// (`ev(e,"Models",s)`) to a constructor argument
+	// (`new UPe("Models",{min,max},...)`) and an inline width computation
+	// (`GD(e,"Agent Hub",w)`); the wildcard matcher absorbs the rename, the
+	// finds below track the call shape.
+	{ name: "agent hub table title", find: 'GD(e,"Agent Hub",o.left?.width??0)', replace: `GD(e,${FN}("Agent Hub"),o.left?.width??0)` },
+	{ name: "models table title", find: 'new UPe("Models",', replace: `new UPe(${FN}("Models"),` },
+	{ name: "agents table title", find: 'new UPe("Agents",', replace: `new UPe(${FN}("Agents"),` },
 	// Panel titles passed to `OverlayPanel` via `super(...)`.
 	{ name: "queue mode title", find: 'super("Queue Mode")', replace: `super(${FN}("Queue Mode"))` },
 	{ name: "show images title", find: 'super("Show Images")', replace: `super(${FN}("Show Images"))` },
@@ -1193,9 +1198,27 @@ const apply = async (): Promise<void> => {
 	// rewrites the replacement on the fly, so an upgrade no longer needs a
 	// hand-edited anchor.
 	const anchorOps: { start: number; end: number; wrap: null; kind: "anchor"; name: string; replace: string; adapted?: string }[] = [];
+	const obsoleteAnchors: string[] = [];
 	for (const patch of ANCHOR_PATCHES) {
 		const hits = resolveAnchor(code, patch);
-		if (hits.length === 0) throw new Error(`anchor missing: ${patch.name} (${JSON.stringify(patch.find)})`);
+		if (hits.length === 0) {
+			// The anchor span is gone. Upstream refactors sometimes replace a
+			// call-site title with a display property the literal scan already
+			// handles (`oi(this.#l,"Recent Logs")` -> `{title:"Recent Logs"}`).
+			// That makes the anchor obsolete rather than broken: if every key
+			// the replacement would have translated is already covered by the
+			// scan, warn and carry on. Anything else is a real regression and
+			// still fails the apply.
+			const keys = [...patch.replace.matchAll(/"((?:[^"\\]|\\.)+)"/g)].map(m => m[1]);
+			const covered = keys.length > 0 && keys.every(k =>
+				verdicts.some(v => v.key === k && v.translate.length > 0));
+			if (covered) {
+				console.warn(`anchor obsolete (key covered by scan): ${patch.name}`);
+				obsoleteAnchors.push(patch.name);
+				continue;
+			}
+			throw new Error(`anchor missing: ${patch.name} (${JSON.stringify(patch.find)})`);
+		}
 		if (hits.length > 1 && !patch.all) {
 			throw new Error(`anchor not unique: ${patch.name} (${hits.length} matches for ${JSON.stringify(patch.find)})`);
 		}
@@ -1373,6 +1396,7 @@ const apply = async (): Promise<void> => {
 		keys: verdicts.filter(v => v.translate.length > 0).map(v => ({ key: v.key, zh: v.zh, occ: v.translate.length, reason: v.reason })),
 		blocks: blocks.map(b => ({ start: b.start, end: b.end, hits: b.hits, lines: b.lines })),
 		anchors: anchorOps.map(a => ({ name: a.name, start: a.start, len: a.end - a.start, adapted: a.adapted ?? null, replace: a.replace })),
+		obsoleteAnchors,
 		valueLabels: Object.keys(VALUE_LABELS).length,
 		ops: ops.length,
 		backup: backupPath,
@@ -1481,14 +1505,19 @@ const verify = async (): Promise<void> => {
 	// case the on-disk replacement carries the freshly captured identifiers
 	// rather than the literal template. The manifest records what was actually
 	// written, so verify against that when it matches this bundle's shape.
+	// Anchors listed as obsolete were absorbed by the literal scan (upstream
+	// refactored the call site into a display property) and count as applied.
 	let appliedAnchors: { name: string; replace: string }[] | null = null;
+	let obsoleteAnchors: string[] = [];
 	try {
-		const manifest = await Bun.file(path.join(WORK, "manifest.json")).json() as { anchors?: { name?: string; replace?: string }[] };
+		const manifest = await Bun.file(path.join(WORK, "manifest.json")).json() as { anchors?: { name?: string; replace?: string }[]; obsoleteAnchors?: string[] };
 		if (Array.isArray(manifest.anchors) && manifest.anchors.every(a => typeof a.replace === "string")) {
 			appliedAnchors = manifest.anchors.map(a => ({ name: a.name ?? "?", replace: a.replace as string }));
 		}
+		if (Array.isArray(manifest.obsoleteAnchors)) obsoleteAnchors = manifest.obsoleteAnchors;
 	} catch { /* no manifest: fall back to the literal templates */ }
 	for (const patch of ANCHOR_PATCHES) {
+		if (obsoleteAnchors.includes(patch.name)) { anchorsOk++; continue; }
 		const candidates = appliedAnchors?.filter(a => a.name === patch.name).map(a => a.replace) ?? [];
 		const hit = code.includes(patch.replace) || candidates.some(c => c.length > 0 && code.includes(c));
 		if (hit) anchorsOk++;

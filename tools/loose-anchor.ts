@@ -106,6 +106,21 @@ export const compileLooseAnchor = (find: string): LoosePattern => {
 			}
 			out.push(escapeRe(buf));
 			i = j;
+		} else if (c === "." && i + 1 < find.length && ID_START.test(find[i + 1])) {
+			// Member chain: `.a.b.c` — the whole chain is one wildcard-sized
+			// token. A refactor can replace `this.deps.agentId` with
+			// `this.#g.agentId`, and anchoring on the property name would
+			// break; capturing the chain keeps the surrounding literals exact.
+			let j = i;
+			while (j < find.length && find[j] === "." && j + 1 < find.length && ID_START.test(find[j + 1])) {
+				j++;
+				while (j < find.length && ID_CHAR.test(find[j])) j++;
+				if (find[j] === "#") { j++; while (j < find.length && ID_CHAR.test(find[j])) j++; }
+			}
+			const chain = find.slice(i, j);
+			out.push("(\\.[A-Za-z0-9_$#.]+)");
+			names.push(chain);
+			i = j;
 		} else if (c === "#" && i + 1 < find.length && ID_START.test(find[i + 1])) {
 			// Private fields (`#y`) are one token: the minifier may rename the
 			// name, so capture `#name` as a unit and let renameTokens map it.
@@ -136,7 +151,12 @@ export const renameTokens = (text: string, renames: Map<string, string>): string
 	let out = text;
 	for (const [from, to] of renames) {
 		if (from === to) continue;
-		out = out.replace(new RegExp(`(?<![A-Za-z0-9_$])${escapeRe(from)}(?![A-Za-z0-9_$])`, "g"), to);
+		// Member chains capture with their leading dot; there is no identifier
+		// boundary to assert on the left (the receiver precedes it).
+		const pattern = from.startsWith(".") || from.startsWith("#")
+			? `${escapeRe(from)}(?![A-Za-z0-9_$])`
+			: `(?<![A-Za-z0-9_$])${escapeRe(from)}(?![A-Za-z0-9_$])`;
+		out = out.replace(new RegExp(pattern, "g"), to);
 	}
 	return out;
 };
