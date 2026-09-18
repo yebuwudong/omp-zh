@@ -77,6 +77,32 @@ const resolveCliPath = (): string => {
 
 const CLI_PATH = resolveCliPath();
 const PKG = path.dirname(path.dirname(CLI_PATH));
+
+/**
+ * Read the bundle and fail with an actionable message when the target is not
+ * a JavaScript text file. `Bun.file().text()` happily decodes a binary
+ * launcher into replacement characters, and Babel then reports a syntax error
+ * at line 1 column 0 with no hint about the real problem (seen in the wild on
+ * macOS installs where `omp` resolved to a compiled binary).
+ */
+const readBundle = async (target: string): Promise<string> => {
+	const bytes = new Uint8Array(await Bun.file(target).arrayBuffer());
+	if (bytes.length === 0) throw new Error(`bundle is empty: ${target}`);
+	const head = bytes.subarray(0, 512);
+	const nulCount = head.filter(b => b === 0).length;
+	const text = new TextDecoder().decode(bytes);
+	const replacement = (text.slice(0, 1024).match(/\uFFFD/g) ?? []).length;
+	if (nulCount > 0 || replacement > 4) {
+		throw new Error(
+			`not a JavaScript bundle: ${target}\n` +
+			`  looks like a binary or compressed file (NUL bytes: ${nulCount}, invalid UTF-8 runs: ${replacement})\n` +
+			`  this patcher rewrites dist/cli.js — the plain JS file shipped inside the package.\n` +
+			`  If your omp is a compiled single-file binary, point the patcher at the package instead:\n` +
+			`    OMP_PKG=/path/to/node_modules/@oh-my-pi/pi-coding-agent ./omp-zh.sh apply`,
+		);
+	}
+	return text;
+};
 const WORK = import.meta.dir;
 const DICT_PATH = path.join(WORK, "dict.json");
 const DICT_EXTRA_PATH = path.join(WORK, "dict-extra.json");
@@ -1085,7 +1111,7 @@ const report = async (): Promise<void> => {
 	// patched: on a patched file every wrapped call arg is a dict key again,
 	// which double-classifies targets and buries the real verdicts.
 	const pristine = await pristinePath();
-	const installed = await Bun.file(CLI_PATH).text();
+	const installed = await readBundle(CLI_PATH);
 	const usePristine = installed.includes(`var ${DICT_VAR}=`) && pristine !== null;
 	const code = await Bun.file(usePristine ? pristine as string : CLI_PATH).text();
 	if (usePristine) console.log(`(installed bundle is patched — reporting on ${path.basename(pristine as string)})\n`);
@@ -1250,7 +1276,7 @@ const planAnchors = (code: string, occurrences: Map<string, Occurrence[]>, verdi
 const apply = async (): Promise<void> => {
 	await migrateBackups();
 	const dict = await loadDict();
-	const code = await Bun.file(CLI_PATH).text();
+	const code = await readBundle(CLI_PATH);
 	if (code.includes(`var ${DICT_VAR}=`)) {
 		throw new Error(
 			`bundle already patched (found ${DICT_VAR}); run \`bun patch.ts restore\` first`,
@@ -1447,7 +1473,7 @@ const apply = async (): Promise<void> => {
 };
 
 const verify = async (): Promise<void> => {
-	const code = await Bun.file(CLI_PATH).text();
+	const code = await readBundle(CLI_PATH);
 	const dict = await loadDict();
 	const parseStart = performance.now();
 	const ast = parse(code, { sourceType: "module", errorRecovery: true }) as unknown as AstNode;
@@ -1665,7 +1691,7 @@ const probe = async (keys: string[]): Promise<void> => {
 const check = async (codePath?: string, jsonPath?: string): Promise<void> => {
 	const dict = await loadDict();
 	let target = codePath ?? CLI_PATH;
-	let code = await Bun.file(target).text();
+	let code = await readBundle(target);
 	// An already-patched install would fail every anchor (the spans now carry
 	// helper calls). Probe the pristine backup instead when no explicit path
 	// was given, mirroring `report`.
@@ -1673,7 +1699,7 @@ const check = async (codePath?: string, jsonPath?: string): Promise<void> => {
 		const pristine = await pristinePath();
 		if (pristine !== null) {
 			target = pristine;
-			code = await Bun.file(target).text();
+			code = await readBundle(target);
 			console.log(`(installed bundle is patched — checking ${path.basename(target)})`);
 		}
 	}
@@ -1737,8 +1763,57 @@ const check = async (codePath?: string, jsonPath?: string): Promise<void> => {
 	}
 };
 
+/**
+ * `doctor` — print everything needed to diagnose an install problem: the
+ * resolved bundle, its shape, whether backups exist, which omp version is
+ * installed, and the first bytes of the file (binary detection). Written for
+ * issue reports where "it fails" is all we get.
+ */
+const doctor = async (): Promise<void> => {
+	console.log(`platform: ${process.platform} ${process.arch}`);
+	console.log(`bun: ${Bun.version}`);
+	console.log(`CLI path: ${CLI_PATH}`);
+	console.log(`  exists: ${existsSync(CLI_PATH)}`);
+	console.log(`OMP_PKG env: ${process.env.OMP_PKG ?? "(unset)"}`);
+	try {
+		const fromPath = Bun.which("omp");
+		console.log(`which omp: ${fromPath ?? "(not on PATH)"}`);
+		if (fromPath) {
+			try { console.log(`  realpath: ${realpathSync(fromPath)}`); } catch { /* ignore */ }
+		}
+	} catch { /* ignore */ }
+	console.log(`package: ${PKG}`);
+	try {
+		const pkg = await Bun.file(path.join(PKG, "package.json")).json() as { version?: string };
+		console.log(`  version: ${pkg.version ?? "?"}`);
+	} catch {
+		console.log("  package.json: unreadable");
+	}
+	const bytes = new Uint8Array(await Bun.file(CLI_PATH).arrayBuffer());
+	console.log(`bundle: ${(bytes.length / 1e6).toFixed(2)}MB`);
+	const nul = bytes.subarray(0, 512).filter(b => b === 0).length;
+	const head = new TextDecoder().decode(bytes.subarray(0, 120)).split("\n")[0];
+	console.log(`  first line: ${JSON.stringify(head.slice(0, 100))}`);
+	console.log(`  NUL bytes in first 512: ${nul}${nul > 0 ? "  <-- binary, not a JS bundle" : ""}`);
+	const text = new TextDecoder().decode(bytes);
+	console.log(`  patched: ${text.includes(`var ${DICT_VAR}=`)}`);
+	try {
+		parse(text, { sourceType: "module", errorRecovery: true });
+		console.log("  parses: yes");
+	} catch (e) {
+		console.log(`  parses: NO — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+	}
+	const backups = await listBackupEntries();
+	console.log(`backups (${backups.length}):`);
+	for (const b of backups.sort((a, b2) => b2.mtimeMs - a.mtimeMs)) {
+		console.log(`  ${b.name}  ${new Date(b.mtimeMs).toISOString()}  ${b.dir}`);
+	}
+};
+
 const command = process.argv[2] ?? "report";
-if (command === "path") {
+if (command === "doctor") {
+	await doctor();
+} else if (command === "path") {
 	console.log(CLI_PATH);
 } else if (command === "check") {
 	const codeIdx = process.argv.indexOf("--code");
@@ -1761,6 +1836,6 @@ else if (command === "restore") await restore();
 else if (command === "list") await listBackups();
 else if (command === "probe") await probe(process.argv.slice(3));
 else {
-	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe|path|check|migrate)`);
+	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe|path|check|migrate|doctor)`);
 	process.exit(1);
 }
