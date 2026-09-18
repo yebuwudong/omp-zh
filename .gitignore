@@ -16,3 +16,6 @@ curated-*.json
 glossary.json
 
 node_modules/
+
+# CI 探测状态
+.upstream-state.json

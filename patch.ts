@@ -1175,6 +1175,78 @@ const collectOps = (verdicts: KeyVerdict[], blocks: BlockRewrite[]): RewriteOp[]
 	return ops;
 };
 
+/**
+ * Resolve every anchor against `code`, absorbing minifier renames (wildcard
+ * capture) and upstream refactors (obsolete/rescue). Returns the concrete
+ * rewrite sites plus the diagnostics the caller logs. Throws when an anchor
+ * cannot be satisfied at all — a real regression must fail loud.
+ */
+interface AnchorPlan {
+	anchorOps: { start: number; end: number; wrap: null; kind: "anchor"; name: string; replace: string; adapted?: string }[];
+	obsoleteAnchors: string[];
+	rescuedKeys: Set<string>;
+	rescuedOps: { start: number; end: number; key: string }[];
+	adapted: { name: string; detail: string }[];
+}
+
+const planAnchors = (code: string, occurrences: Map<string, Occurrence[]>, verdicts: KeyVerdict[]): AnchorPlan => {
+	const anchorOps: AnchorPlan["anchorOps"] = [];
+	const obsoleteAnchors: string[] = [];
+	const rescuedKeys = new Set<string>();
+	const rescuedOps: AnchorPlan["rescuedOps"] = [];
+	const adapted: AnchorPlan["adapted"] = [];
+	const RESCUE_SAFE = (role: string): boolean =>
+		DIRECT_ROLES[role] === true || role === "arrayElem" || role === "other" ||
+		role === "groupKey" || role === "groupArrayElem";
+	for (const patch of ANCHOR_PATCHES) {
+		const hits = resolveAnchor(code, patch);
+		if (hits.length === 0) {
+			// A missing span is not always a regression: upstream may have
+			// refactored the call site into a display property the scan already
+			// translates. Judge by whether the keys survive.
+			const keys = [...patch.replace.matchAll(/"((?:[^"\\]|\\.)+)"/g)].map(m => m[1]);
+			const covered = keys.length > 0 && keys.every(k =>
+				verdicts.some(v => v.key === k && v.translate.length > 0));
+			if (covered) {
+				console.warn(`anchor obsolete (key covered by scan): ${patch.name}`);
+				obsoleteAnchors.push(patch.name);
+				continue;
+			}
+			const keyOccs = keys.map(k => ({ key: k, occs: occurrences.get(k) ?? [] }));
+			const rescuable = keyOccs.length > 0 &&
+				keyOccs.every(({ occs }) => occs.length > 0 && occs.every(o => RESCUE_SAFE(o.role)));
+			if (rescuable) {
+				for (const { key, occs } of keyOccs) {
+					if (rescuedKeys.has(key)) continue;
+					rescuedKeys.add(key);
+					for (const o of occs) rescuedOps.push({ start: o.start, end: o.end, key });
+				}
+				console.warn(`anchor rescued (key wrapped at scan position): ${patch.name}`);
+				continue;
+			}
+			throw new Error(`anchor missing: ${patch.name} (${JSON.stringify(patch.find)})`);
+		}
+		if (hits.length > 1 && !patch.all) {
+			throw new Error(`anchor not unique: ${patch.name} (${hits.length} matches for ${JSON.stringify(patch.find)})`);
+		}
+		for (const hit of hits) {
+			if (hit.adapted) {
+				console.log(`anchor adapted: ${patch.name} (${hit.adapted})`);
+				adapted.push({ name: patch.name, detail: hit.adapted });
+			}
+			anchorOps.push({ start: hit.start, end: hit.end, wrap: null, kind: "anchor", name: patch.name, replace: hit.replace, adapted: hit.adapted || undefined });
+		}
+	}
+	anchorOps.sort((a, b) => a.start - b.start);
+	for (let i = 1; i < anchorOps.length; i++) {
+		if (anchorOps[i].start < anchorOps[i - 1].end) {
+			throw new Error(`anchors overlap: ${anchorOps[i - 1].name} vs ${anchorOps[i].name}`);
+		}
+	}
+	console.log(`anchors: ${anchorOps.length} site(s) from ${ANCHOR_PATCHES.length} entries`);
+	return { anchorOps, obsoleteAnchors, rescuedKeys, rescuedOps, adapted };
+};
+
 const apply = async (): Promise<void> => {
 	await migrateBackups();
 	const dict = await loadDict();
@@ -1197,67 +1269,7 @@ const apply = async (): Promise<void> => {
 	// wildcard matcher in tools/loose-anchor.ts captures the new spellings and
 	// rewrites the replacement on the fly, so an upgrade no longer needs a
 	// hand-edited anchor.
-	const anchorOps: { start: number; end: number; wrap: null; kind: "anchor"; name: string; replace: string; adapted?: string }[] = [];
-	const obsoleteAnchors: string[] = [];
-	// Keys recovered from a broken anchor: upstream refactored the call shape
-	// but the literal is still there in a display position the scan can see
-	// (e.g. `ev(e,"Models",s)` -> `new UPe("Models",{...})`). Wrapping those
-	// spans keeps the translation alive without a hand-edited anchor.
-	const rescuedKeys = new Set<string>();
-	const rescuedOps: { start: number; end: number; key: string }[] = [];
-	const RESCUE_SAFE = (role: string): boolean =>
-		DIRECT_ROLES[role] === true || role === "arrayElem" || role === "other" ||
-		role === "groupKey" || role === "groupArrayElem";
-	for (const patch of ANCHOR_PATCHES) {
-		const hits = resolveAnchor(code, patch);
-		if (hits.length === 0) {
-			// The anchor span is gone. Upstream refactors sometimes replace a
-			// call-site title with a display property the literal scan already
-			// handles (`oi(this.#l,"Recent Logs")` -> `{title:"Recent Logs"}`).
-			// That makes the anchor obsolete rather than broken: if every key
-			// the replacement would have translated is already covered by the
-			// scan, warn and carry on. Anything else is a real regression and
-			// still fails the apply.
-			const keys = [...patch.replace.matchAll(/"((?:[^"\\]|\\.)+)"/g)].map(m => m[1]);
-			const covered = keys.length > 0 && keys.every(k =>
-				verdicts.some(v => v.key === k && v.translate.length > 0));
-			if (covered) {
-				console.warn(`anchor obsolete (key covered by scan): ${patch.name}`);
-				obsoleteAnchors.push(patch.name);
-				continue;
-			}
-			// Rescue: every key this anchor carried must appear in the bundle
-			// with only display-safe roles. Then the scan positions carry the
-			// translation and the anchor itself is obsolete.
-			const keyOccs = keys.map(k => ({ key: k, occs: occurrences.get(k) ?? [] }));
-			const rescuable = keyOccs.length > 0 &&
-				keyOccs.every(({ occs }) => occs.length > 0 && occs.every(o => RESCUE_SAFE(o.role)));
-			if (rescuable) {
-				for (const { key, occs } of keyOccs) {
-					if (rescuedKeys.has(key)) continue;
-					rescuedKeys.add(key);
-					for (const o of occs) rescuedOps.push({ start: o.start, end: o.end, key });
-				}
-				console.warn(`anchor rescued (key wrapped at scan position): ${patch.name}`);
-				continue;
-			}
-			throw new Error(`anchor missing: ${patch.name} (${JSON.stringify(patch.find)})`);
-		}
-		if (hits.length > 1 && !patch.all) {
-			throw new Error(`anchor not unique: ${patch.name} (${hits.length} matches for ${JSON.stringify(patch.find)})`);
-		}
-		for (const hit of hits) {
-			if (hit.adapted) console.log(`anchor adapted: ${patch.name} (${hit.adapted})`);
-			anchorOps.push({ start: hit.start, end: hit.end, wrap: null, kind: "anchor", name: patch.name, replace: hit.replace, adapted: hit.adapted || undefined });
-		}
-	}
-	anchorOps.sort((a, b) => a.start - b.start);
-	for (let i = 1; i < anchorOps.length; i++) {
-		if (anchorOps[i].start < anchorOps[i - 1].end) {
-			throw new Error(`anchors overlap: ${anchorOps[i - 1].name} vs ${anchorOps[i].name}`);
-		}
-	}
-	console.log(`anchors: ${anchorOps.length} site(s) from ${ANCHOR_PATCHES.length} entries`);
+	const { anchorOps, obsoleteAnchors, rescuedKeys, rescuedOps, adapted: adaptedAnchors } = planAnchors(code, occurrences, verdicts);
 
 	// Concatenated hints are invisible to the literal scan; wrap those templates
 	// so the runtime fragment translator can finish the job.
@@ -1644,9 +1656,71 @@ const probe = async (keys: string[]): Promise<void> => {
 	}
 };
 
+/**
+ * `check [--code <path>]` — dry-run the full pipeline against a bundle
+ * without writing anything. Used by CI to probe a fresh upstream release:
+ * exits non-zero when anchors cannot be adapted, and prints the untranslated
+ * display strings so the dictionary gap is visible in the issue.
+ */
+const check = async (codePath?: string): Promise<void> => {
+	const dict = await loadDict();
+	let target = codePath ?? CLI_PATH;
+	let code = await Bun.file(target).text();
+	// An already-patched install would fail every anchor (the spans now carry
+	// helper calls). Probe the pristine backup instead when no explicit path
+	// was given, mirroring `report`.
+	if (codePath === undefined && code.includes(`var ${DICT_VAR}=`)) {
+		const pristine = await pristinePath();
+		if (pristine !== null) {
+			target = pristine;
+			code = await Bun.file(target).text();
+			console.log(`(installed bundle is patched — checking ${path.basename(target)})`);
+		}
+	}
+	console.log(`checking ${target} (${(code.length / 1e6).toFixed(2)}MB)`);
+
+	const { occurrences } = scanBundle(code, dict);
+	const verdicts = decideAll(occurrences, dict);
+	const blocks = findBlocks(code, dict);
+	const ops = collectOps(verdicts, blocks);
+	const { anchorOps, obsoleteAnchors, rescuedKeys } = planAnchors(code, occurrences, verdicts);
+	const { ops: tmplOps, missing: tmplMissing } = locateTemplates(code);
+
+	const trans = verdicts.filter(v => v.translate.length > 0);
+	const transOcc = trans.reduce((a, v) => a + v.translate.length, 0);
+	console.log(`literal sites: ${ops.length} (${trans.length} keys / ${transOcc} occ) | blocks: ${blocks.length} | template wraps: ${tmplOps.length}`);
+
+	// Gaps: display-position English the dictionary does not cover yet. These
+	// are the strings that would stay English after applying, so CI reports
+	// them for translation instead of failing outright.
+	const gaps: string[] = [];
+	for (const v of verdicts) {
+		if (v.translate.length === 0) continue;
+		if (dictGet(dict, v.key) !== undefined) continue;
+		gaps.push(v.key);
+	}
+	if (gaps.length) {
+		console.log(`\ndictionary gaps (${gaps.length}):`);
+		for (const g of gaps.slice(0, 200)) console.log(`  ${JSON.stringify(g)}`);
+	}
+	if (tmplMissing.length) {
+		console.log(`\ntemplate targets missing (${tmplMissing.length}):`);
+		for (const t of tmplMissing) console.log(`  ${t}`);
+	}
+	console.log(`\nsummary: anchors ${anchorOps.length} ok, ${obsoleteAnchors.length} obsolete, ${rescuedKeys.size} rescued keys, ${gaps.length} dictionary gaps`);
+	if (gaps.length || tmplMissing.length) {
+		// Not a hard failure: the patch still applies and only these strings
+		// stay English until the dictionary catches up. CI decides severity.
+		process.exitCode = 2;
+	}
+};
+
 const command = process.argv[2] ?? "report";
 if (command === "path") {
 	console.log(CLI_PATH);
+} else if (command === "check") {
+	const codeIdx = process.argv.indexOf("--code");
+	await check(codeIdx === -1 ? undefined : process.argv[codeIdx + 1]);
 } else if (command === "migrate") {
 	const before = await listBackupEntries();
 	await migrateBackups();
@@ -1661,6 +1735,6 @@ else if (command === "restore") await restore();
 else if (command === "list") await listBackups();
 else if (command === "probe") await probe(process.argv.slice(3));
 else {
-	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe|path)`);
+	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe|path|check|migrate)`);
 	process.exit(1);
 }

@@ -11,7 +11,9 @@
  *   OMP_ZH=0 bun tools/test-value-labels.ts # expect raw values (kill switch)
  */
 
-const CLI = "/home/yebu/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js";
+import * as path from "node:path";
+const PKG = process.env.OMP_PKG ?? path.join(process.env.HOME ?? "~", ".bun/install/global/node_modules/@oh-my-pi/pi-coding-agent");
+const CLI = process.env.OMP_ZH_SRC ?? path.join(PKG, "dist/cli.js");
 const code = await Bun.file(CLI).text();
 
 const start = code.indexOf("var __omp_i18n_on=");

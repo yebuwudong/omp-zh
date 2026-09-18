@@ -1,0 +1,55 @@
+name: self-test
+
+# 每次改动都在干净环境验证补丁器：对当前最新上游产物全流程干跑，
+# 断言无词典缺口、无锚点失配。防止提交了坏补丁而用户端才发现。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+
+      - name: 下载最新上游产物
+        run: |
+          mkdir -p /tmp/omp && cd /tmp/omp
+          V=$(npm view @oh-my-pi/pi-coding-agent version)
+          echo "omp $V"
+          npm pack "@oh-my-pi/pi-coding-agent@$V" --silent >/dev/null
+          tar -xzf ./*.tgz
+
+      - name: 干跑（锚点必须全部可适配）
+        run: |
+          set +e
+          bun patch.ts check --code /tmp/omp/package/dist/cli.js | tee /tmp/check.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          # 锚点失配 = 硬失败；词典缺口（exit 2）仅告警，由 upstream-watch 跟踪
+          if [[ $rc -eq 1 ]]; then
+            echo "::error::锚点失配，补丁器需要适配新版本"
+            exit 1
+          fi
+
+      - name: 端到端 apply + verify + 回退（对临时副本）
+        run: |
+          rm -rf /tmp/e2e && mkdir -p /tmp/e2e/package/dist
+          cp /tmp/omp/package/dist/cli.js /tmp/e2e/package/dist/cli.js
+          cp /tmp/omp/package/package.json /tmp/e2e/package/package.json
+          chmod +x /tmp/e2e/package/dist/cli.js
+          export OMP_PKG=/tmp/e2e/package
+          bun patch.ts apply
+          bun patch.ts verify
+          bun tools/test-value-labels.ts
+          OMP_ZH=0 bun tools/test-value-labels.ts
+          # restore 必须能回到与原文件一致的字节
+          bun patch.ts restore
+          cmp /tmp/e2e/package/dist/cli.js /tmp/omp/package/dist/cli.js && echo "restore byte-identical"

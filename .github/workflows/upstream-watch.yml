@@ -1,0 +1,117 @@
+name: upstream-watch
+
+# 云端自动同步上游：定时检查 @oh-my-pi/pi-coding-agent 的新版本，
+# 下载新产物做全流程干跑（复刻 apply 的锚点规划）。三种结果：
+#   0 = 完全适配（重命名/重构自动吃掉，无需动作）
+#   2 = 能适配但词典有缺口（开 issue 列出缺口，供补译）
+#   1 = 锚点失配（真回归，开 issue 附完整日志）
+# 任何非 0 结果都会创建/更新带 upstream-watch 标签的 issue。
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "omp 版本（默认取 npm latest）"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 安装依赖
+        run: bun install
+
+      - name: 解析版本
+        id: ver
+        run: |
+          V="${{ inputs.version }}"
+          if [[ -z "$V" ]]; then
+            V=$(npm view @oh-my-pi/pi-coding-agent version)
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "检测到上游版本：$V"
+
+      - name: 下载上游产物
+        run: |
+          mkdir -p /tmp/omp && cd /tmp/omp
+          npm pack "@oh-my-pi/pi-coding-agent@${{ steps.ver.outputs.version }}" --silent >/dev/null
+          tar -xzf ./*.tgz
+          test -f package/dist/cli.js && ls -la package/dist/cli.js
+
+      - name: 干跑补丁（不写盘）
+        id: probe
+        run: |
+          set +e
+          bun patch.ts check --code /tmp/omp/package/dist/cli.js > /tmp/probe.log 2>&1
+          rc=$?
+          set -e
+          echo "exit=$rc" >> "$GITHUB_OUTPUT"
+          cat /tmp/probe.log
+          # 只留结尾部分，避免超长 issue
+          tail -c 14000 /tmp/probe.log > /tmp/probe-tail.txt
+          # 恢复记忆：上一轮记录的版本，用于判断"是否是新版本"
+          echo "prev=$(cat .upstream-state.json 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+
+      - name: 开/更新 issue
+        if: steps.probe.outputs.exit != '0'
+        uses: actions/github-script@v7
+        env:
+          PROBE_LOG: /tmp/probe-tail.txt
+        with:
+          script: |
+            const fs = require("fs");
+            const log = fs.readFileSync(process.env.PROBE_LOG, "utf8");
+            const version = "${{ steps.ver.outputs.version }}";
+            const rc = "${{ steps.probe.outputs.exit }}";
+            const kind = rc === "2" ? "词典缺口" : "锚点失配（真回归）";
+            const title = `上游 ${version} 需要处理：${kind}`;
+            const body = [
+              `云端探测发现 **omp ${version}** 的适配结果需要人工/助手介入：**${kind}**。`,
+              "",
+              "把下面的输出交给维护者或 AI 助手即可修复：",
+              "",
+              "```",
+              log,
+              "```",
+              "",
+              "_由 upstream-watch 工作流自动创建。_",
+            ].join("\n");
+            const label = "upstream-watch";
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: label, per_page: 20,
+            });
+            // One open issue per affected version: comment when it already
+            // exists, create otherwise. Keeps the tracker readable when the
+            // workflow runs every six hours.
+            const sameVersion = open.data.find(i => i.title.includes(version));
+            if (sameVersion) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: sameVersion.number, body,
+              });
+            } else if (open.data.length > 0) {
+              // Older version still unresolved: add the new finding there.
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: open.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: [label],
+              });
+            }
