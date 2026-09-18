@@ -84,6 +84,56 @@ anchors: 61/61 applied
 跨大版本升级（如 19.x）后建议顺便跑一次 `./omp-zh.sh report`，
 命中数量若骤降说明产物结构大改，需要同步补丁规则。
 
+## 维护者工具：一键补译
+
+上游每次发版都会带来十几条新界面文案。补译只需一条命令：
+
+```bash
+cd ~/.omp-zh
+bun tools/translate.ts
+```
+
+它会依次执行（每步都有进度提示）：
+
+| 步骤 | 动作 |
+|---|---|
+| 1/6 扫描 | 对照词典找出版本里未翻译的界面英文 |
+| 2/6 翻译 | 调用 OpenAI 兼容端点批量翻译（默认读本机 `~/.omp/agent/models.yml`） |
+| 3/6 审阅 | 打印全部候选译文，等你按 `y` 确认 |
+| 4/6 并入 | 写进 `dict-extra.json` |
+| 5/6 验证 | 自动跑 `apply` + 完整断言（锚点、游离中文、回退） |
+| 6/6 发布 | 需显式 `--push` 才提交推送 |
+
+常用参数：
+
+```bash
+bun tools/translate.ts --yes              # 跳过确认（译文仍会打印）
+bun tools/translate.ts --dry-run          # 只扫描+翻译，不写任何文件
+bun tools/translate.ts --push             # 验证通过后自动 commit + push
+bun tools/translate.ts --model cn:glm-5.3 # 换翻译模型
+bun tools/translate.ts --endpoint https://api.openai.com/v1   # 换端点
+```
+
+端点与凭据解析顺序（**密钥永不入库**）：
+
+```
+--endpoint / OMP_ZH_ENDPOINT 环境变量
+  ↓ 未设置时
+~/.omp/agent/models.yml 里记录的本地网关
+  ↓ 都没有
+报错提示你配置
+```
+
+质量保障（三层，自动执行）：
+
+1. **术语锁**：原文含 `Compact`/`Vibe`/`Advisor`/`Prewalk`… 时译文必须使用既定译法，违反则标记并拒绝自动并入
+2. **结构校验**：占位符 `${x}`、数字、标点形态必须一致，不一致直接拒绝
+3. **人工审阅点**：默认停下等你确认；`--yes` 也仍会完整打印候选
+
+> 只想手工处理时，底层两个工具也可单独用：
+> `bun tools/extract-gaps.ts --json report-gaps.json` 扫描缺口，
+> `bun tools/auto-translate.ts` 生成候选，`--accept` 并入。
+
 ## 汉化范围
 
 已汉化：

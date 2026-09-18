@@ -22,8 +22,40 @@ const isAstNode = (v: unknown): v is AstNode =>
 	typeof v === "object" && v !== null && typeof (v as { type?: unknown }).type === "string";
 
 const WORK = path.resolve(import.meta.dir, "..");
-const PKG = "/home/yebu/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent";
-const CLI_PATH = process.env.OMP_ZH_SRC ? process.env.OMP_ZH_SRC : path.join(PKG, "dist/cli.js");
+const PKG = process.env.OMP_PKG ??
+	path.join(process.env.HOME ?? "~", ".bun/install/global/node_modules/@oh-my-pi/pi-coding-agent");
+let CLI_PATH = process.env.OMP_ZH_SRC ?? path.join(PKG, "dist/cli.js");
+
+// The installed bundle is usually patched, which hides the English originals
+// (they are wrapped in helper calls). Scan the pristine backup instead so the
+// gap list reflects upstream text.
+if (process.env.OMP_ZH_SRC === undefined) {
+	const installed = await Bun.file(CLI_PATH).text();
+	if (installed.includes("__omp_i18n_on=")) {
+		const backups = [
+			path.join(path.dirname(CLI_PATH), ".omp-zh-backup"),
+			path.join(path.resolve(import.meta.dir, ".."), "backup"),
+		];
+		// Pick the newest unpatched snapshot: it mirrors the currently
+		// installed upstream version, which is what the gap list should
+		// describe. `pristine` (the oldest file) would hide every string added
+		// since the first install.
+		let best: { path: string; mtime: number } | null = null;
+		for (const dir of backups) {
+			let names: string[] = [];
+			try {
+				names = await Array.fromAsync(new Bun.Glob("cli.js.orig-*").scan({ cwd: dir }));
+			} catch { continue; }
+			for (const name of names) {
+				const full = path.join(dir, name);
+				const stat = await Bun.file(full).stat().catch(() => null);
+				if (!stat) continue;
+				if (!best || stat.mtimeMs > best.mtime) best = { path: full, mtime: stat.mtimeMs };
+			}
+		}
+		if (best) CLI_PATH = best.path;
+	}
+}
 
 const dict: Record<string, string> = { ...(await Bun.file(path.join(WORK, "dict.json")).json()), ...(await Bun.file(path.join(WORK, "dict-extra.json")).json()) };
 const code = await Bun.file(CLI_PATH).text();
