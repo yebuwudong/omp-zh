@@ -55,6 +55,21 @@ git clone https://github.com/yebuwudong/omp-zh.git ~/.omp-zh
 cd ~/.omp-zh && ./omp-zh.sh apply
 ```
 
+### 更新补丁
+
+补丁会持续跟进上游版本，更新方式二选一（等价，第二条内部就是 `git pull`）：
+
+```bash
+# 方式一：重跑安装命令（自动 pull + 应用）
+curl -fsSL https://raw.githubusercontent.com/yebuwudong/omp-zh/main/install.sh | bash
+
+# 方式二：手动更新已 clone 的目录
+cd ~/.omp-zh && git pull && ./omp-zh.sh apply
+```
+
+> `git pull` 只对**已经 clone 过**的目录有效（默认位置 `~/.omp-zh`，可用 `OMP_ZH_HOME` 改）。
+> 第一次使用请走上方的安装命令。
+
 ## 日常使用
 
 ```bash
