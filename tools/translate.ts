@@ -3,17 +3,17 @@
  * One-command dictionary maintenance: scan gaps, translate, review, install,
  * verify, and (optionally) publish.
  *
- *   bun tools/translate.ts              # interactive: stop before pushing
- *   bun tools/translate.ts --yes        # skip the review prompt
- *   bun tools/translate.ts --push       # commit + push after verification
- *   bun tools/translate.ts --dry-run    # scan and translate only, no writes
+ *   bun tools/translate.ts              # 全自动：扫描 → 翻译 → 并入 → 验证
+ *   bun tools/translate.ts --review     # 停在审阅（只打候选，不写词典）
+ *   bun tools/translate.ts --push       # 验证通过后自动 commit + push
+ *   bun tools/translate.ts --dry-run    # 只扫描 + 翻译，不写任何文件
  *
  * Steps
  * -----
  *   1. scan     extract display-position English missing from the dictionary
  *   2. translate  batch-translate through an OpenAI-compatible endpoint
- *   3. review   print candidates; ask for confirmation (unless --yes)
- *   4. install  merge accepted candidates into dict-extra.json
+ *   3. review   print candidates (audit trail; --review stops here)
+ *   4. install  merge candidates into dict-extra.json (structural checks gate)
  *   5. verify   ./omp-zh.sh apply && ./omp-zh.sh test
  *   6. publish  git add/commit/push (only with --push)
  *
@@ -22,7 +22,6 @@
  */
 
 import * as path from "node:path";
-import * as readline from "node:readline/promises";
 
 const WORK = path.resolve(import.meta.dir, "..");
 const GAPS_PATH = path.join(WORK, "report-gaps.json");
@@ -36,7 +35,10 @@ const flag = (name: string): string | undefined => {
 const has = (name: string): boolean => args.includes(name);
 
 const MODEL = flag("--model") ?? "cn:deepseek-v4.1-flash";
-const AUTO_YES = has("--yes") || has("-y");
+// Automatic by default: the tool exists to keep the dictionary current without
+// babysitting. Structural checks (placeholders, digits, term locks) still gate
+// every entry, and dict-candidates.json keeps the full audit trail.
+const STOP_FOR_REVIEW = has("--review") || has("-r");
 const DO_PUSH = has("--push");
 const DRY_RUN = has("--dry-run");
 
@@ -105,21 +107,13 @@ if (clean.length === 0) {
 }
 
 step(3, "审阅");
-console.log(`将并入 dict-extra.json 的 ${clean.length} 条：`);
+console.log(`并入 dict-extra.json 的 ${clean.length} 条：`);
 for (const c of clean) console.log(`  ${JSON.stringify(c.key)}\n    → ${JSON.stringify(c.zh)}`);
 console.log(`\n完整候选（含标记项）见 ${CANDIDATES_PATH}`);
-console.log("若要修改某条译文：编辑该文件的 zh 字段后重跑本命令（会跳过已接受的条目）。");
 
-if (!AUTO_YES) {
-	const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-	const answer = await rl.question("\n确认并入这些译文？[y/N] ");
-	rl.close();
-	if (!/^y(es)?$/i.test(answer.trim())) {
-		console.log("已取消。候选文件保留，可稍后再跑。");
-		process.exit(0);
-	}
-} else {
-	console.log("(--yes：跳过确认)");
+if (STOP_FOR_REVIEW) {
+	console.log("(--review：停在审阅阶段，不写入词典)");
+	process.exit(0);
 }
 
 // ── 4. install ──────────────────────────────────────────────────────────────

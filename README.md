@@ -99,15 +99,17 @@ bun tools/translate.ts
 |---|---|
 | 1/6 扫描 | 对照词典找出版本里未翻译的界面英文 |
 | 2/6 翻译 | 调用 OpenAI 兼容端点批量翻译（默认读本机 `~/.omp/agent/models.yml`） |
-| 3/6 审阅 | 打印全部候选译文，等你按 `y` 确认 |
+| 3/6 打印 | 输出全部候选（审计留痕，不打断流程） |
 | 4/6 并入 | 写进 `dict-extra.json` |
 | 5/6 验证 | 自动跑 `apply` + 完整断言（锚点、游离中文、回退） |
 | 6/6 发布 | 需显式 `--push` 才提交推送 |
 
+**默认全自动**，不需要人工确认；候选文件 `dict-candidates.json` 保留完整记录供事后追溯。
+
 常用参数：
 
 ```bash
-bun tools/translate.ts --yes              # 跳过确认（译文仍会打印）
+bun tools/translate.ts --review           # 停在审阅（只打候选，不写词典）
 bun tools/translate.ts --dry-run          # 只扫描+翻译，不写任何文件
 bun tools/translate.ts --push             # 验证通过后自动 commit + push
 bun tools/translate.ts --model cn:glm-5.3 # 换翻译模型
@@ -124,13 +126,13 @@ bun tools/translate.ts --endpoint https://api.openai.com/v1   # 换端点
 报错提示你配置
 ```
 
-质量保障（三层，自动执行）：
+自动质量保障（无需人工）：
 
-1. **术语锁**：原文含 `Compact`/`Vibe`/`Advisor`/`Prewalk`… 时译文必须使用既定译法，违反则标记并拒绝自动并入
-2. **结构校验**：占位符 `${x}`、数字、标点形态必须一致，不一致直接拒绝
-3. **人工审阅点**：默认停下等你确认；`--yes` 也仍会完整打印候选
+1. **结构校验（硬门禁）**：占位符 `${x}`、数字形态不一致 → **拒绝并入**（词典里没有该键，界面保持原文，不会出错）
+2. **术语锁（软提示）**：原文含 `Compact`/`Vibe`/`Advisor`/`Prewalk`… 时检查译文是否用了既定译法，违反则标记但仍并入，在输出里提示
+3. **审计留痕**：全部候选写入 `dict-candidates.json`，随时可回看
 
-> 只想手工处理时，底层两个工具也可单独用：
+> 需要手工介入时，底层工具可单独使用：
 > `bun tools/extract-gaps.ts --json report-gaps.json` 扫描缺口，
 > `bun tools/auto-translate.ts` 生成候选，`--accept` 并入。
 
