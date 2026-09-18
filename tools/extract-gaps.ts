@@ -117,7 +117,10 @@ const classify = (node: AstNode, parents: AstNode[]): { role: string; via: strin
 const visit = (node: AstNode, parents: AstNode[]): void => {
 	if (node.type === "StringLiteral" && typeof node.value === "string" && typeof node.start === "number") {
 		const value = node.value;
-		if (dict[value] === undefined && !NON_PROSE.test(value) && PROSE_LIKE.test(value) && value.length >= 4) {
+		// Control sequences (ANSI styling) are not copy: they must never enter
+		// the gap list, or the translator would "translate" escape codes.
+		if (dict[value] === undefined && !/[\u001b\x00-\x08\x0e-\x1f]/.test(value) &&
+			/[A-Za-z]{2,}/.test(value) && !NON_PROSE.test(value) && PROSE_LIKE.test(value) && value.length >= 4) {
 			const { role, via } = classify(node, parents);
 			if (role !== "skip") {
 				const prev = gaps.get(value);
@@ -150,6 +153,20 @@ const filtered = mode === "settings" ? list.filter(g => g.role === "propDisplay"
 console.log(`\n--- ${filtered.length} strings ---`);
 for (const g of filtered) {
 	console.log(`${JSON.stringify(g.value)}\t[${g.role}|${g.via}] x${g.count}`);
+}
+
+// Machine-readable output for tools/auto-translate.ts: `--json <path>`.
+// Includes the snippet so the translator sees the call site, and the role so
+// it can skip anything that looks like an identifier.
+const jsonIdx = process.argv.indexOf("--json");
+if (jsonIdx !== -1 && process.argv[jsonIdx + 1]) {
+	const payload = {
+		generatedAt: new Date().toISOString(),
+		source: CLI_PATH,
+		entries: filtered.map(g => ({ key: g.value, role: g.role, via: g.via, count: g.count, snippet: g.snippet })),
+	};
+	await Bun.write(process.argv[jsonIdx + 1], JSON.stringify(payload, null, 2));
+	console.log(`→ ${process.argv[jsonIdx + 1]} (${filtered.length} entries)`);
 }
 
 const tsv = filtered.map(g => `${JSON.stringify(g.value)}\t${g.role}\t${g.via}\t${g.count}`).join("\n") + "\n";

@@ -19,3 +19,5 @@ node_modules/
 
 # CI 探测状态
 .upstream-state.json
+dict-candidates.json
+report-gaps.json

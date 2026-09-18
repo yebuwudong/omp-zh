@@ -1662,7 +1662,7 @@ const probe = async (keys: string[]): Promise<void> => {
  * exits non-zero when anchors cannot be adapted, and prints the untranslated
  * display strings so the dictionary gap is visible in the issue.
  */
-const check = async (codePath?: string): Promise<void> => {
+const check = async (codePath?: string, jsonPath?: string): Promise<void> => {
 	const dict = await loadDict();
 	let target = codePath ?? CLI_PATH;
 	let code = await Bun.file(target).text();
@@ -1693,15 +1693,37 @@ const check = async (codePath?: string): Promise<void> => {
 	// Gaps: display-position English the dictionary does not cover yet. These
 	// are the strings that would stay English after applying, so CI reports
 	// them for translation instead of failing outright.
+	// Real gap detection: `verdicts` only covers literals that are already in
+	// the dictionary, so it can never report a missing key. Ask the gap
+	// extractor (same role classifier) to scan the bundle for display-position
+	// English that has no entry yet.
 	const gaps: string[] = [];
-	for (const v of verdicts) {
-		if (v.translate.length === 0) continue;
-		if (dictGet(dict, v.key) !== undefined) continue;
-		gaps.push(v.key);
+	let gapEntries: { key: string; role: string; via: string; count: number; snippet: string }[] = [];
+	try {
+		const tmp = path.join(os.tmpdir(), `omp-zh-gaps-${process.pid}.json`);
+		const proc = Bun.spawnSync(["bun", path.join(WORK, "tools", "extract-gaps.ts"), "--json", tmp], {
+			env: { ...process.env, OMP_ZH_SRC: target },
+			stdout: "ignore",
+			stderr: "pipe",
+		});
+		if (proc.exitCode === 0) {
+			const parsed = JSON.parse(await Bun.file(tmp).text()) as { entries: typeof gapEntries };
+			gapEntries = parsed.entries;
+			gaps.push(...gapEntries.map(e => e.key));
+			await fs.rm(tmp, { force: true });
+		} else {
+			console.warn(`gap scan failed (exit ${proc.exitCode}): ${proc.stderr.toString().slice(0, 200)}`);
+		}
+	} catch (e) {
+		console.warn(`gap scan unavailable: ${e instanceof Error ? e.message : e}`);
 	}
 	if (gaps.length) {
 		console.log(`\ndictionary gaps (${gaps.length}):`);
 		for (const g of gaps.slice(0, 200)) console.log(`  ${JSON.stringify(g)}`);
+	}
+	if (jsonPath) {
+		await Bun.write(jsonPath, JSON.stringify({ generatedAt: new Date().toISOString(), source: target, entries: gapEntries }, null, 2));
+		console.log(`wrote ${gapEntries.length} gaps → ${jsonPath}`);
 	}
 	if (tmplMissing.length) {
 		console.log(`\ntemplate targets missing (${tmplMissing.length}):`);
@@ -1720,7 +1742,11 @@ if (command === "path") {
 	console.log(CLI_PATH);
 } else if (command === "check") {
 	const codeIdx = process.argv.indexOf("--code");
-	await check(codeIdx === -1 ? undefined : process.argv[codeIdx + 1]);
+	const jsonIdx = process.argv.indexOf("--json");
+	await check(
+		codeIdx === -1 ? undefined : process.argv[codeIdx + 1],
+		jsonIdx === -1 ? undefined : process.argv[jsonIdx + 1],
+	);
 } else if (command === "migrate") {
 	const before = await listBackupEntries();
 	await migrateBackups();
