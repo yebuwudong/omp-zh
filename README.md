@@ -21,6 +21,17 @@
 备份位于 <omp>/dist/.omp-zh-backup/（跟着安装走，多份 clone 共享）
 ```
 
+## 支持的安装方式
+
+| omp 安装方式 | 汉化做法 |
+|---|---|
+| `bun install -g` / npm / nix | 直接改写包内 `dist/cli.js`，`omp` 启动即中文 |
+| **官方预编译二进制**（`curl https://omp.sh/install \| sh`） | 二进制内嵌字节码不可改写，改为**侧载同版本 JS 运行时**并生成 `omp-zh` 启动器；原 omp 不动 |
+| Homebrew | 通常指向 npm 包，同第一种 |
+| 源码构建 | 直接改写构建产物 |
+
+侧载目录 `~/.omp-zh/runtime/<版本>/`，启动器 `~/.omp-zh/bin/omp-zh`。把该目录加入 PATH 后运行 `omp-zh` 即为中文界面；`OMP_ZH=0 omp-zh` 切回英文。补丁器会按 `omp --version` 自动选择路径，无需手工配置。
+
 ## 快速开始（一行命令，始终用最新补丁）
 
 ```bash

@@ -47,36 +47,144 @@ import * as path from "node:path";
 import { locateTemplates } from "./tools/patch-templates";
 
 /**
- * Locate the installed omp bundle. Resolution order:
- *   1. `OMP_PKG` env override (points at the package root or cli.js)
- *   2. the `omp` launcher on PATH (symlink -> .../dist/cli.js)
- *   3. bun's global install directory
- * A missing bundle is a hard error only when a command actually touches it;
- * `path` still answers for scripts that need to know where omp lives.
+ * Locate the installed omp bundle. omp ships in four shapes and only one of
+ * them is patchable in place:
+ *
+ *   bun global / npm / nix   -> dist/cli.js (plain JS text)      [patchable]
+ *   prebuilt binary          -> single-file executable            [not patchable]
+ *   homebrew                 -> formula wrapping the npm package  [usually JS]
+ *   source checkout          -> built cli.js                      [patchable]
+ *
+ * The prebuilt binary embeds bytecode, not source, so it cannot be rewritten.
+ * For that case we materialise the *same version* from npm into a sidecar
+ * directory and patch that, then emit an `omp-zh` launcher. Everything the
+ * patcher does afterwards is identical.
  */
-const resolveCliPath = (): string => {
-	const candidates: string[] = [];
-	const envPkg = process.env.OMP_PKG;
-	if (envPkg) {
-		candidates.push(envPkg.endsWith(".js") ? envPkg : path.join(envPkg, "dist", "cli.js"));
-	}
-	const fromPath = Bun.which("omp");
-	if (fromPath) {
-		try {
-			candidates.push(realpathSync(fromPath));
-		} catch {
-			candidates.push(fromPath);
-		}
-	}
-	candidates.push(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@oh-my-pi", "pi-coding-agent", "dist", "cli.js"));
-	for (const candidate of candidates) {
-		if (existsSync(candidate)) return candidate;
-	}
-	return candidates[candidates.length - 1];
+
+/** True when the file starts with a native executable magic number. */
+const isNativeBinary = (bytes: Uint8Array): boolean => {
+	const b = bytes;
+	if (b.length >= 4 && b[0] === 0x7f && b[1] === 0x45 && b[2] === 0x4c && b[3] === 0x46) return true; // ELF
+	if (b.length >= 4 && b[0] === 0xcf && b[1] === 0xfa && b[2] === 0xed && b[3] === 0xfe) return true; // Mach-O LE
+	if (b.length >= 4 && b[0] === 0xfe && b[1] === 0xed && b[2] === 0xfa && b[3] === 0xcf) return true; // Mach-O BE
+	if (b.length >= 4 && b[0] === 0xca && b[1] === 0xfe && b[2] === 0xba && b[3] === 0xbe) return true; // fat Mach-O
+	if (b.length >= 2 && b[0] === 0x4d && b[1] === 0x5a) return true; // PE
+	return false;
 };
 
-const CLI_PATH = resolveCliPath();
-const PKG = path.dirname(path.dirname(CLI_PATH));
+const SIDECAR_ROOT = path.join(os.homedir(), ".omp-zh", "runtime");
+const LAUNCHER_DIR = path.join(os.homedir(), ".omp-zh", "bin");
+
+interface OmpTarget {
+	/** Path to the patchable cli.js. */
+	cliPath: string;
+	/** "installed" | "sidecar" */
+	kind: "installed" | "sidecar";
+	/** Version string when known (e.g. "18.2.5"). */
+	version?: string;
+	/** Launcher path created for sidecar installs. */
+	launcher?: string;
+}
+
+const packageRoot = (cli: string): string => path.dirname(path.dirname(cli));
+
+/** Read the version a bundle reports, without executing it. */
+const bundleVersion = async (cli: string): Promise<string | undefined> => {
+	try {
+		const head = await Bun.file(cli).slice(0, 4_000_000).text();
+		return head.match(/"(\d+\.\d+\.\d+)"/)?.[1];
+	} catch {
+		return undefined;
+	}
+};
+
+/** Ask the installed omp for its version (works for binaries too). */
+const probeVersion = (exe: string): string | undefined => {
+	try {
+		const proc = Bun.spawnSync([exe, "--version"], { stdout: "pipe", stderr: "ignore" });
+		const out = proc.stdout.toString().trim();
+		return out.match(/(\d+\.\d+\.\d+)/)?.[1];
+	} catch {
+		return undefined;
+	}
+};
+
+/**
+ * Materialise `<version>` from npm into the sidecar directory and return its
+ * cli.js path. Uses `bun add` so the dependency tree matches what the binary
+ * was built from.
+ */
+const materializeSidecar = async (version: string): Promise<string> => {
+	const dir = path.join(SIDECAR_ROOT, version);
+	const cli = path.join(dir, "node_modules", "@oh-my-pi", "pi-coding-agent", "dist", "cli.js");
+	if (existsSync(cli)) return cli;
+	console.log(`二进制安装无法就地打补丁，正在获取同版本 JS 包（${version}）到 ${dir} …`);
+	await fs.mkdir(dir, { recursive: true });
+	const pkgJson = path.join(dir, "package.json");
+	if (!existsSync(pkgJson)) {
+		await Bun.write(pkgJson, JSON.stringify({ name: `omp-zh-runtime-${version}`, private: true, type: "module" }, null, 2) + "\n");
+	}
+	const proc = Bun.spawnSync(["bun", "add", `@oh-my-pi/pi-coding-agent@${version}`], {
+		cwd: dir,
+		stdout: "inherit",
+		stderr: "inherit",
+	});
+	if (proc.exitCode !== 0 || !existsSync(cli)) {
+		throw new Error(`failed to fetch @oh-my-pi/pi-coding-agent@${version} into ${dir}`);
+	}
+	return cli;
+};
+
+/** Write the `omp-zh` launcher that runs the patched sidecar bundle. */
+const writeLauncher = async (cli: string): Promise<string> => {
+	await fs.mkdir(LAUNCHER_DIR, { recursive: true });
+	const launcher = path.join(LAUNCHER_DIR, "omp-zh");
+	const body = `#!/bin/sh\n# Generated by omp-zh. Runs the patched omp bundle.\nexec bun ${JSON.stringify(cli)} "$@"\n`;
+	await Bun.write(launcher, body);
+	await fs.chmod(launcher, 0o755);
+	return launcher;
+};
+
+/**
+ * Resolve what to patch. Explicit OMP_PKG always wins; otherwise the `omp` on
+ * PATH decides, and a native binary triggers the sidecar path. `OMP_ZH_NO_SIDECAR=1`
+ * disables the sidecar fallback (CI uses it to keep runs hermetic).
+ */
+const resolveTarget = async (): Promise<OmpTarget> => {
+	const envPkg = process.env.OMP_PKG;
+	if (envPkg) {
+		const cli = envPkg.endsWith(".js") ? envPkg : path.join(envPkg, "dist", "cli.js");
+		return { cliPath: cli, kind: "installed", version: await bundleVersion(cli) };
+	}
+	const fromPath = Bun.which("omp");
+	const candidates: string[] = [];
+	if (fromPath) {
+		try { candidates.push(realpathSync(fromPath)); } catch { candidates.push(fromPath); }
+	}
+	candidates.push(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@oh-my-pi", "pi-coding-agent", "dist", "cli.js"));
+
+	for (const candidate of candidates) {
+		if (!existsSync(candidate)) continue;
+		const bytes = new Uint8Array(await Bun.file(candidate).arrayBuffer());
+		if (isNativeBinary(bytes)) {
+			if (process.env.OMP_ZH_NO_SIDECAR === "1") {
+				throw new Error(`omp at ${candidate} is a native binary; set OMP_PKG to a JS package`);
+			}
+			const version = probeVersion(candidate) ?? await bundleVersion(candidate);
+			if (!version) throw new Error(`cannot determine omp version from ${candidate}`);
+			const cli = await materializeSidecar(version);
+			const launcher = await writeLauncher(cli);
+			console.log(`已生成启动器：${launcher}（把它加入 PATH 后运行 \`omp-zh\`）`);
+			return { cliPath: cli, kind: "sidecar", version, launcher };
+		}
+		return { cliPath: candidate, kind: "installed", version: await bundleVersion(candidate) };
+	}
+	return { cliPath: candidates[candidates.length - 1], kind: "installed" };
+};
+
+const TARGET = await resolveTarget();
+const CLI_PATH = TARGET.cliPath;
+const PKG = packageRoot(CLI_PATH);
 
 /**
  * Read the bundle and fail with an actionable message when the target is not
@@ -1608,6 +1716,10 @@ const verify = async (): Promise<void> => {
 
 const restore = async (): Promise<void> => {
 	await migrateBackups();
+	if (TARGET.kind === "sidecar" && TARGET.launcher) {
+		console.log(`这是二进制安装的侧载运行时（${TARGET.version}）——原 omp 二进制从未被修改。`);
+		console.log(`还原即可回到英文：OMP_ZH=0 ${TARGET.launcher}   （或删除 ${SIDECAR_ROOT}）`);
+	}
 	const backups = await listBackupEntries();
 	if (backups.length === 0) throw new Error(`no backups found in ${backupDirs().join(" or ")}`);
 	// Guard against version regressions: a stale backup (e.g. 18.2.1 sitting
@@ -1772,6 +1884,8 @@ const check = async (codePath?: string, jsonPath?: string): Promise<void> => {
 const doctor = async (): Promise<void> => {
 	console.log(`platform: ${process.platform} ${process.arch}`);
 	console.log(`bun: ${Bun.version}`);
+	console.log(`install kind: ${TARGET.kind}${TARGET.version ? ` (omp ${TARGET.version})` : ""}`);
+	if (TARGET.launcher) console.log(`launcher: ${TARGET.launcher}`);
 	console.log(`CLI path: ${CLI_PATH}`);
 	console.log(`  exists: ${existsSync(CLI_PATH)}`);
 	console.log(`OMP_PKG env: ${process.env.OMP_PKG ?? "(unset)"}`);

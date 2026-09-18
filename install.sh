@@ -41,6 +41,19 @@ fi
 cd "$DIR"
 [[ -f ./omp-zh.sh ]] || die "$DIR 里没有 omp-zh.sh，仓库内容异常"
 
+# 预编译二进制安装：补丁器会侧载同版本 JS 运行时并生成启动器，
+# 之后用 `omp-zh` 启动（而不是 `omp`）。这里给出提示。
+if command -v omp >/dev/null 2>&1; then
+	case "$(head -c 4 "$(command -v omp)" 2>/dev/null | od -An -tx1 | tr -d ' \n')" in
+	7f454c46|feedface|feedfacf|cffaedfe|cafebabe|4d5a)
+		echo
+		echo "检测到 omp 是预编译二进制：汉化会侧载同版本 JS 运行时。"
+		echo "完成后用 \`omp-zh\` 启动中文版（原 omp 保持不变）。"
+		echo
+		;;
+	esac
+fi
+
 # babel/parser 用于解析 23MB 产物；首次安装或依赖缺失时自动补齐。
 if [[ ! -d ./node_modules/@babel/parser ]]; then
 	echo "安装依赖……"
