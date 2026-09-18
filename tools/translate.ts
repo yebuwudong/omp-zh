@@ -74,9 +74,10 @@ console.log(`发现 ${gaps.entries.length} 条待翻译字符串`);
 
 // ── 2. translate ────────────────────────────────────────────────────────────
 
-step(2, `自动翻译（模型：${MODEL}）`);
+step(2, `自动翻译 + 模型自查（模型：${MODEL}）`);
 const trArgs = ["bun", path.join(WORK, "tools", "auto-translate.ts"), "--gaps", GAPS_PATH, "--model", MODEL];
 if (has("--endpoint")) trArgs.push("--endpoint", flag("--endpoint") as string);
+if (has("--no-review")) trArgs.push("--no-review");
 const tr = await run(trArgs, { inherit: true });
 if (tr.code !== 0) process.exit(tr.code);
 if (!(await Bun.file(CANDIDATES_PATH).exists())) {
@@ -106,7 +107,7 @@ if (clean.length === 0) {
 	process.exit(0);
 }
 
-step(3, "审阅");
+step(3, "候选（已由模型复核）");
 console.log(`并入 dict-extra.json 的 ${clean.length} 条：`);
 for (const c of clean) console.log(`  ${JSON.stringify(c.key)}\n    → ${JSON.stringify(c.zh)}`);
 console.log(`\n完整候选（含标记项）见 ${CANDIDATES_PATH}`);

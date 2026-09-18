@@ -98,18 +98,20 @@ bun tools/translate.ts
 | 步骤 | 动作 |
 |---|---|
 | 1/6 扫描 | 对照词典找出版本里未翻译的界面英文 |
-| 2/6 翻译 | 调用 OpenAI 兼容端点批量翻译（默认读本机 `~/.omp/agent/models.yml`） |
+| 2/6 翻译 | 调用 OpenAI 兼容端点批量翻译 + **模型自查**（带着上下文和校验标记复核草稿并修订；`--no-review` 可关） |
 | 3/6 打印 | 输出全部候选（审计留痕，不打断流程） |
 | 4/6 并入 | 写进 `dict-extra.json` |
 | 5/6 验证 | 自动跑 `apply` + 完整断言（锚点、游离中文、回退） |
 | 6/6 发布 | 需显式 `--push` 才提交推送 |
 
-**默认全自动**，不需要人工确认；候选文件 `dict-candidates.json` 保留完整记录供事后追溯。
+**默认全自动**：初译后由同一模型复核（看到原句、调用上下文、机械校验标记），修订结果重新过一遍校验才允许并入；
+候选文件 `dict-candidates.json` 保留完整记录供事后追溯。
 
 常用参数：
 
 ```bash
 bun tools/translate.ts --review           # 停在审阅（只打候选，不写词典）
+bun tools/translate.ts --no-review        # 关闭模型自查（单遍翻译）
 bun tools/translate.ts --dry-run          # 只扫描+翻译，不写任何文件
 bun tools/translate.ts --push             # 验证通过后自动 commit + push
 bun tools/translate.ts --model cn:glm-5.3 # 换翻译模型

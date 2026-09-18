@@ -10,11 +10,13 @@
  *      the existing glossary injected so terminology stays consistent.
  *   3. Every candidate is validated mechanically (placeholders, digits,
  *      punctuation shape, existing term locks) and flagged when suspicious.
- *   4. Candidates land in `dict-candidates.json` for review. Nothing is merged
- *      until `--accept` runs.
+ *   4. The model reviews its own drafts with the snippets and flags in front
+ *      of it, and returns final text (--no-review skips this pass).
+ *   5. Candidates land in `dict-candidates.json`; `--accept` merges them.
  *
- *   bun tools/auto-translate.ts                     # translate, write candidates
- *   bun tools/auto-translate.ts --accept            # merge approved candidates
+ *   bun tools/auto-translate.ts                     # translate + self-review, write candidates
+ *   bun tools/auto-translate.ts --no-review         # single-pass (no self-review)
+ *   bun tools/auto-translate.ts --accept            # merge candidates into the dictionary
  *   bun tools/auto-translate.ts --accept --only key1,key2
  *   bun tools/auto-translate.ts --model cn:glm-5.3  # pick another model
  *
@@ -168,7 +170,7 @@ const buildPrompt = (entries: { key: string; snippet: string }[]): string => {
 	].filter(Boolean).join("\n");
 };
 
-const translateBatch = async (ep: Endpoint, entries: { key: string; snippet: string }[]): Promise<Record<string, string>> => {
+const chat = async (ep: Endpoint, prompt: string, temperature = 0.2): Promise<string> => {
 	const res = await fetch(`${ep.baseUrl}/chat/completions`, {
 		method: "POST",
 		headers: {
@@ -177,20 +179,67 @@ const translateBatch = async (ep: Endpoint, entries: { key: string; snippet: str
 		},
 		body: JSON.stringify({
 			model: MODEL,
-			messages: [{ role: "user", content: buildPrompt(entries) }],
+			messages: [{ role: "user", content: prompt }],
 			max_tokens: 4000,
-			temperature: 0.2,
+			temperature,
 		}),
 	});
 	if (!res.ok) throw new Error(`endpoint ${res.status}: ${(await res.text()).slice(0, 300)}`);
 	const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-	let text = data.choices?.[0]?.message?.content ?? "";
-	text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-	const start = text.indexOf("{");
-	const end = text.lastIndexOf("}");
-	if (start === -1 || end === -1) throw new Error(`model returned no JSON: ${text.slice(0, 200)}`);
-	return JSON.parse(text.slice(start, end + 1)) as Record<string, string>;
+	return data.choices?.[0]?.message?.content ?? "";
 };
+
+const parseJsonObject = (text: string): Record<string, string> => {
+	let t = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+	const start = t.indexOf("{");
+	const end = t.lastIndexOf("}");
+	if (start === -1 || end === -1) throw new Error(`model returned no JSON: ${t.slice(0, 200)}`);
+	return JSON.parse(t.slice(start, end + 1)) as Record<string, string>;
+};
+
+const translateBatch = async (ep: Endpoint, entries: { key: string; snippet: string }[]): Promise<Record<string, string>> =>
+	parseJsonObject(await chat(ep, buildPrompt(entries)));
+
+/**
+ * Model self-review: hand the draft back with the glossary and the mechanical
+ * flags, and ask for corrections only. This is the "second pair of eyes" that
+ * used to be a human, run by the same model with the full context (snippets,
+ * established terminology, the checks that failed).
+ */
+const reviewPrompt = (
+	drafts: { key: string; zh: string; snippet?: string; flags: string[] }[],
+): string => {
+	const glossary: string[] = [];
+	try {
+		const g = JSON.parse(require("node:fs").readFileSync(GLOSSARY_PATH, "utf8")) as Record<string, string>;
+		for (const [en, zh] of Object.entries(g).slice(0, 80)) glossary.push(`${en} => ${zh}`);
+	} catch { /* optional */ }
+	const termList = TERM_LOCKS.map(([re, zh]) => `${re.source.replace(/\\b|\?|\(|\)|:/g, "")} => ${zh}`).join("; ");
+	return [
+		"You are reviewing Chinese translations of UI copy for a terminal coding agent.",
+		"For each entry below you get the English source, the usage context, and a draft translation.",
+		"Fix problems: mistranslation, awkward or unidiomatic wording, wrong terminology, register mismatch (UI copy must be terse).",
+		"Keep correctness constraints: placeholders (${x}, {count}, <path>, %s, \\n) and numbers must stay byte-identical;",
+		"product names, CLI flags and paths stay English; use the established terminology.",
+		"Return ONLY a JSON object mapping each English source to its FINAL translation (improved or unchanged). No prose.",
+		glossary.length ? `Established glossary:\n${glossary.join("\n")}` : "",
+		`Term locks (English token => required Chinese): ${termList}`,
+		"",
+		"Entries:",
+		...drafts.map(d => JSON.stringify({
+			source: d.key,
+			context: d.snippet ?? "",
+			draft: d.zh,
+			...(d.flags.length ? { mechanical_issues: d.flags } : {}),
+		})),
+	].filter(Boolean).join("\n");
+};
+
+const reviewBatch = async (
+	ep: Endpoint,
+	drafts: { key: string; zh: string; snippet: string; flags: string[] }[],
+): Promise<Record<string, string>> =>
+	parseJsonObject(await chat(ep, reviewPrompt(drafts), 0.1));
 
 // ── commands ────────────────────────────────────────────────────────────────
 
@@ -233,7 +282,7 @@ const run = async (): Promise<void> => {
 	console.log(`gaps: ${gaps.entries.length}, to translate: ${todo.length}, model: ${MODEL}`);
 
 	const ep = await resolveEndpoint();
-	const candidates: Candidate[] = [];
+	let candidates: Candidate[] = [];
 	for (let i = 0; i < todo.length; i += BATCH) {
 		const batch = todo.slice(i, i + BATCH);
 		console.log(`  batch ${Math.floor(i / BATCH) + 1}/${Math.ceil(todo.length / BATCH)} (${batch.length} strings)`);
@@ -252,6 +301,46 @@ const run = async (): Promise<void> => {
 			}
 			candidates.push({ key: entry.key, zh, role: entry.role, count: entry.count, flags: validate(entry.key, zh) });
 		}
+	}
+
+	// ── self-review pass ──────────────────────────────────────────────────
+	// The model re-reads its own drafts with the snippets and mechanical flags
+	// in front of it and returns final text. This replaces the human reviewer:
+	// same model, better context, no waiting. Skipped with --no-review.
+	if (!has("--no-review") && candidates.length > 0) {
+		console.log("\n自查：模型复核草稿…");
+		const reviewed: Candidate[] = [];
+		for (let i = 0; i < candidates.length; i += BATCH) {
+			const batch = candidates.slice(i, i + BATCH);
+			const drafts = batch.map(c => {
+				const entry = todo.find(t => t.key === c.key);
+				return { key: c.key, zh: c.zh, snippet: entry?.snippet ?? "", flags: c.flags };
+			});
+			let out: Record<string, string>;
+			try {
+				out = await reviewBatch(ep, drafts);
+			} catch (e) {
+				console.error(`  review batch failed: ${e instanceof Error ? e.message : e}`);
+				reviewed.push(...batch);
+				continue;
+			}
+			for (const c of batch) {
+				const fixed = out[c.key];
+				if (typeof fixed !== "string" || fixed.length === 0) {
+					reviewed.push(c);
+					continue;
+				}
+				if (fixed !== c.zh) {
+					console.log(`  修订 ${JSON.stringify(c.key)}`);
+					console.log(`    旧 ${JSON.stringify(c.zh)}`);
+					console.log(`    新 ${JSON.stringify(fixed)}`);
+				}
+				// Re-validate the revised text: a "fix" that breaks a
+				// placeholder must not enter the dictionary.
+				reviewed.push({ ...c, zh: fixed, flags: validate(c.key, fixed) });
+			}
+		}
+		candidates = reviewed;
 	}
 
 	await Bun.write(CANDIDATES_PATH, JSON.stringify({ generatedAt: new Date().toISOString(), model: MODEL, candidates }, null, 2));
