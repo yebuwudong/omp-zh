@@ -17,6 +17,10 @@ glossary.json
 
 node_modules/
 
+# 本地生成物：启动器与侧载运行时（含上游闭源包，体积近 1G）
+bin/
+runtime/
+
 # CI 探测状态
 .upstream-state.json
 dict-candidates.json

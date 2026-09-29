@@ -27,15 +27,21 @@ jobs:
           npm pack "@oh-my-pi/pi-coding-agent@$V" --silent >/dev/null
           tar -xzf ./*.tgz
 
-      - name: 干跑（锚点必须全部可适配）
+      - name: 干跑（锚点与模板目标必须全部可适配）
         run: |
           set +e
           bun patch.ts check --code /tmp/omp/package/dist/cli.js | tee /tmp/check.log
           rc=${PIPESTATUS[0]}
           set -e
-          # 锚点失配 = 硬失败；词典缺口（exit 2）仅告警，由 upstream-watch 跟踪
+          # 硬失败（exit 1）：锚点失配，或模板目标（设置页脚等字面量改写够不到
+          # 的界面）失配——两者都会让某块 UI 悄悄停留在英文，必须补规则。
+          # 词典缺口（exit 2）仅告警，由 upstream-watch 跟踪。
           if [[ $rc -eq 1 ]]; then
-            echo "::error::锚点失配，补丁器需要适配新版本"
+            if grep -q "anchor not applied" /tmp/check.log; then
+              echo "::error::锚点失配，补丁器需要适配新版本"
+            else
+              echo "::error::模板目标失配（设置页脚等），需要按新形态补 tools/patch-templates.ts"
+            fi
             exit 1
           fi
 

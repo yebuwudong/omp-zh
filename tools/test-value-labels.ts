@@ -12,8 +12,31 @@
  */
 
 import * as path from "node:path";
-const PKG = process.env.OMP_PKG ?? path.join(process.env.HOME ?? "~", ".bun/install/global/node_modules/@oh-my-pi/pi-coding-agent");
-const CLI = process.env.OMP_ZH_SRC ?? path.join(PKG, "dist/cli.js");
+import * as os from "node:os";
+import { existsSync } from "node:fs";
+
+/**
+ * Resolve the patched bundle. A binary install patches a sidecar copy under
+ * `~/.omp-zh/runtime/<version>/`, so the old `~/.bun/install/global` default
+ * points at a file that never exists there. Try, in order:
+ *   OMP_ZH_SRC           explicit bundle path
+ *   OMP_PKG              package directory
+ *   `patch.ts path`      whatever the patcher resolved (covers sidecar)
+ *   ~/.bun/install/global fallback for plain bun-global installs
+ */
+const resolveCli = (): string => {
+	if (process.env.OMP_ZH_SRC) return process.env.OMP_ZH_SRC;
+	const pkg = process.env.OMP_PKG;
+	if (pkg) return path.join(pkg, "dist", "cli.js");
+	const fromPatcher = Bun.spawnSync(["bun", path.join(import.meta.dir, "..", "patch.ts"), "path"], {
+		stdout: "pipe",
+		stderr: "ignore",
+	});
+	const resolved = fromPatcher.exitCode === 0 ? fromPatcher.stdout.toString().trim() : "";
+	if (resolved && existsSync(resolved)) return resolved;
+	return path.join(os.homedir(), ".bun/install/global/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js");
+};
+const CLI = resolveCli();
 const code = await Bun.file(CLI).text();
 
 const start = code.indexOf("var __omp_i18n_on=");

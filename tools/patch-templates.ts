@@ -23,6 +23,15 @@ export interface TemplateTarget {
 	name: string;
 	/** Unique substring in the pristine bundle identifying the template's backtick. */
 	anchor: string;
+	/**
+	 * Alternate anchors for upstream refactors. When the footer stopped being a
+	 * literal (`Enter/Space to change`) and became a keybinding lookup
+	 * (`${ut("tui.select.confirm")}/${we("space")} to change`), no amount of
+	 * identifier wildcarding recovers the old anchor — the literal text is
+	 * simply gone. Each alternate is tried with the same exact-then-loose
+	 * strategy.
+	 */
+	alts?: readonly string[];
 }
 
 /**
@@ -33,10 +42,18 @@ export const TEMPLATE_TARGETS: readonly TemplateTarget[] = [
 	{
 		name: "settings footer hint",
 		anchor: "`Enter/Space to change \\xB7 ${i}Type to search \\xB7 Esc to cancel`",
+		// A later upstream build assembles the same line from the keybinding table.
+		alts: [
+			'`${ut("tui.select.confirm")}/${we("space")} to change \\xB7 ${i}Type to search \\xB7 ${ut("tui.select.cancel")} to cancel`',
+		],
 	},
 	{
 		name: "settings footer hint (jump variant)",
 		anchor: "`Enter/Space to change \\xB7 ${this.#a?",
+		// The same refactor renders the tab section from keybindings too.
+		alts: [
+			"`${e}/${we(\"space\")} to change \\xB7 ${o} \\xB7 Type to search \\xB7 ${t} to close`",
+		],
 	},
 ];
 
@@ -51,28 +68,45 @@ export const locateTemplates = (code: string): { ops: WrapOp[]; missing: string[
 	const ops: WrapOp[] = [];
 	const missing: string[] = [];
 	for (const target of TEMPLATE_TARGETS) {
-		let idx = code.indexOf(target.anchor);
+		// Exact match for every spelling before any wildcard pass, so a bundle
+		// that still carries the original literal is never re-anchored.
+		const spellings = [target.anchor, ...(target.alts ?? [])];
+		let idx = -1;
+		let matched = "";
+		for (const spelling of spellings) {
+			const at = code.indexOf(spelling);
+			if (at === -1) continue;
+			idx = at;
+			matched = spelling;
+			break;
+		}
 		if (idx === -1) {
 			// Minified identifiers are renamed on every release; retry with the
 			// wildcard matcher and rewrite the anchor so the search below still
 			// finds the template's opening backtick.
-			const loose = matchLoose(code, target.anchor);
-			if (loose.length === 0) {
-				missing.push(`${target.name} (anchor not found)`);
+			for (const spelling of spellings) {
+				const loose = matchLoose(code, spelling);
+				if (loose.length === 0) continue;
+				if (loose.length > 1) {
+					missing.push(`${target.name} (anchor not unique: ${loose.length})`);
+					idx = -1;
+					break;
+				}
+				idx = loose[0].start;
+				matched = spelling;
+				break;
+			}
+			if (idx === -1) {
+				if (!missing.some(m => m.startsWith(target.name))) missing.push(`${target.name} (anchor not found)`);
 				continue;
 			}
-			if (loose.length > 1) {
-				missing.push(`${target.name} (anchor not unique: ${loose.length})`);
-				continue;
-			}
-			idx = loose[0].start;
 			const backtick = code.indexOf("`", idx);
-			if (backtick === -1 || backtick - idx > target.anchor.length + 40) {
+			if (backtick === -1 || backtick - idx > matched.length + 40) {
 				missing.push(`${target.name} (loose anchor has no template backtick)`);
 				continue;
 			}
 			idx = backtick;
-		} else if (code.indexOf(target.anchor, idx + 1) !== -1) {
+		} else if (code.indexOf(matched, idx + 1) !== -1) {
 			missing.push(`${target.name} (anchor not unique)`);
 			continue;
 		}
