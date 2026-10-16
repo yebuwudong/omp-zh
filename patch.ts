@@ -238,9 +238,24 @@ const compileNative = async (cli: string, version: string): Promise<string | und
 	// dependencies (`@oh-my-pi/pi-natives/vcs` and friends); from an unrelated
 	// directory the build dies with "Could not resolve".
 	const cwd = path.dirname(path.dirname(path.dirname(path.dirname(path.dirname(cli)))));
-	console.error(`正在预编译字节码二进制（约 5 秒）：${out} …`);
+	const distDir = path.dirname(cli);
+	// Upstream 18.11.x reads static files from `import.meta.dir` at runtime
+	// (compressed rule/model corpora, markdown renderer, docs index). A
+	// `--compile` binary mounts its JS at `/$bunfs/root/`, which is also where
+	// `import.meta.dir` resolves, so every sibling asset must be embedded with
+	// `--asset` under its bare file name — passing the directory embeds nothing,
+	// because bun only inlines assets the entry imports. The .node native addon
+	// is deliberately excluded: it resolves through ~/.omp/natives/<version>/
+	// instead and must be copied there separately.
+	const assets = (await fs.readdir(distDir))
+		.filter(f => f !== "cli.js" && f !== "types" && !f.endsWith(".node"))
+		.map(f => ["--asset", path.join(distDir, f)]);
+	if (assets.length === 0) {
+		console.error("警告：产物目录没有可嵌入的静态资源，编译产物可能只能用于 --version");
+	}
+	console.error(`正在预编译字节码二进制（含 ${assets.length} 个静态资源，约 6 秒）：${out} …`);
 	const proc = Bun.spawnSync(
-		["bun", "build", "--compile", "--bytecode", "--format=esm", cli, "--outfile", out],
+		["bun", "build", "--compile", "--bytecode", "--format=esm", ...assets.flat(), cli, "--outfile", out],
 		{ cwd, stdout: "ignore", stderr: "pipe" },
 	);
 	if (proc.exitCode !== 0 || !existsSync(out)) {
@@ -249,6 +264,26 @@ const compileNative = async (cli: string, version: string): Promise<string | und
 		return undefined;
 	}
 	await makeExecutable(out);
+	// The bundle loads its native addon from `~/.omp/natives/<version>/`, a
+	// path outside the binary — inside it the addon request resolves to the
+	// virtual `/$bunfs/` root, which cannot hold a `.node` dlopen target. The
+	// sidecar's node_modules ships the platform addon, so place a copy where
+	// the loader looks. Best-effort: its absence only breaks features that
+	// need the addon, and upstream's own binary install has the same layout.
+	const addon = (await fs.readdir(distDir).catch(() => [] as string[])).length > 0
+		? (await Array.fromAsync(
+			new Bun.Glob("**/*.node").scan({ cwd: path.join(cwd, "node_modules"), onlyFiles: true }),
+		))
+		: [];
+	if (addon.length > 0) {
+		const nativesDir = path.join(os.homedir(), ".omp", "natives", version);
+		await fs.mkdir(nativesDir, { recursive: true });
+		for (const rel of addon) {
+			const dest = path.join(nativesDir, path.basename(rel));
+			await fs.copyFile(path.join(cwd, "node_modules", rel), dest).catch(() => { /* best effort */ });
+		}
+		console.error(`原生插件 → ${nativesDir}（${addon.length} 个）`);
+	}
 	console.error(`已生成字节码二进制：${out}`);
 	return out;
 };
