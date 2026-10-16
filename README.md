@@ -37,8 +37,9 @@ bin/、runtime/ 为本地生成物（启动器与侧载运行时），不入库
 
 ## Windows 支持现状
 
-**原生 Windows（PowerShell / CMD）尚未经真机验证。** 下面是代码层面的现状，真机结论需要用户跑
-`bun patch.ts doctor` 后反馈（见「诊断」一节）。
+已在 Windows x64 / PowerShell 7.6.6 / Bun 1.3.14 上验证 omp 18.11.1 的 `.exe` 侧载：
+应用汉化、中文启动、`OMP_ZH=0`、校验及字节一致的还原。其他安装方式和架构仍需实测。
+需要 Bun **1.3.14 或更高版本**；锁文件兼容该版本，可用 `bun install --frozen-lockfile` 安装依赖。
 
 | 环境 | 状态 |
 |---|---|
@@ -64,13 +65,17 @@ irm https://omp.sh/install.ps1 | iex
 git clone https://github.com/yebuwudong/omp-zh.git $env:USERPROFILE\.omp-zh
 cd $env:USERPROFILE\.omp-zh
 bun install
-bun patch.ts apply      # 打补丁 + 生成启动器 + 校验
+bun patch.ts apply      # 打补丁 + 生成启动器
+bun patch.ts verify     # 完整校验
 omp-zh                  # 中文界面
 bun patch.ts restore    # 还原
 ```
 
-`.cmd` 启动器里优先走 `sh`（Git Bash / WSL 存在时），这样能沿用完整的版本自愈逻辑；
-没有 `sh` 时直接用 bun 跑侧载产物。
+原生 Windows 的 `.cmd` 启动器直接用 Bun 运行侧载产物，不依赖 `sh`，也不执行可选的字节码预编译。
+官方 omp 升级后重新运行 `bun patch.ts apply`；项目生成的 `.cmd` 会更新到对应版本，其他文件不会被覆盖。
+
+若当前终端找不到 `omp`，可先用 `$env:OMP_PKG='C:\path\to\omp.exe'` 显式指定安装位置，
+再运行 `doctor` 或 `apply`。这也适用于由其他应用管理的 `.exe` 安装。
 
 ### 方式二：npm / bun 全局包（就地汉化）
 
@@ -94,7 +99,7 @@ bun patch.ts apply / verify / restore
 
 已知限制：
 
-- 未在真机验证。所有 Windows 分支都是按代码和模拟环境写的，需要实测确认。
+- 已验证上述 x64 侧载路径，npm/Bun 全局包和 arm64 尚需真机反馈。
 - Windows 上不做 `chmod` / symlink（前者无意义，后者需要管理员权限或开发者模式），
   启动器改为 `.cmd` 文件。
 - 完整对等的 PowerShell 版 `install.ps1` / `omp-zh.ps1`（自动 clone、更新、一键 apply 等）
@@ -111,6 +116,9 @@ bun patch.ts doctor
 
 Windows 上会额外输出 `USERPROFILE`、`APPDATA`、`PATHEXT`、是否找到 `sh`，以及包装脚本
 解析出的真实 bundle 路径。提 issue 时把整段贴上来即可。
+
+`doctor` 只检查现有文件，不下载侧载运行时、不创建或更新启动器。首次使用时若提示侧载产物缺失，
+运行 `bun patch.ts apply` 才会获取并汉化同版本运行时。
 
 侧载目录 `~/.omp-zh/runtime/<版本>/`，启动器 `~/.omp-zh/bin/omp-zh`。补丁器会按 `omp --version` 自动选择路径，无需手工配置。
 
@@ -131,7 +139,7 @@ Windows 上会额外输出 `USERPROFILE`、`APPDATA`、`PATHEXT`、是否找到 
 侧载运行时是一个约 30 MB 的 JS 产物，每次启动都要重新解析、编译一遍——本机（arm64）实测
 **约 1.1 秒**，而官方编译二进制只要 **0.13 秒**。
 
-`apply` 现在会自动把打好补丁的产物**预编译成带字节码的独立二进制**（`runtime/<版本>/omp-zh-native`），
+非 Windows 平台的 `apply` 会自动把打好补丁的产物**预编译成带字节码的独立二进制**（`runtime/<版本>/omp-zh-native`），
 启动器优先使用它：
 
 | 启动路径 | 耗时 |
@@ -154,7 +162,8 @@ Windows 上会额外输出 `USERPROFILE`、`APPDATA`、`PATHEXT`、是否找到 
    （否则「还原英文」之后仍是中文）。
 
 预编译是**尽力而为**：任何失败都只打印原因并退回 JS 路径，不会让 `apply` 失败。
-想跳过它设 `OMP_ZH_NO_NATIVE=1`；想单独重建跑 `bun patch.ts native`。
+非 Windows 平台可设 `OMP_ZH_NO_NATIVE=1` 跳过，或运行 `bun patch.ts native` 单独重建。
+Windows 的启动器使用 JS 路径，默认跳过预编译；本节的性能数据不适用于 Windows。
 
 ## 快速开始（一行命令，始终用最新补丁）
 
@@ -520,7 +529,7 @@ CI 门禁同步收紧：模板目标失配从「软警告（exit 2）」升为�
 
 - 极少数词典未收录的条目仍为英文（如 `Agent Reactions`、`Mouse Click-to-Focus`）。
 - 翻译来自社区分支 `yequ172672/oh-my-pi-cn`，个别术语可能与上游新增功能不完全对齐。
-- **Windows 原生环境未在真机验证**（见「Windows 支持现状」）；`install.sh` / `omp-zh.sh` 是 bash 脚本，Windows 上需手动执行 `bun patch.ts` 子命令。
+- **Windows 验证范围见「Windows 支持现状」**；`install.sh` / `omp-zh.sh` 是 bash 脚本，Windows 上需手动执行 `bun patch.ts` 子命令。
 - 已实测：`--version`、欢迎屏、设置面板（含页脚与右列值）、slash 补全描述、`OMP_ZH=0` 回退、TUI 冒烟零残留。
 
 ## 设置行右列的值显示

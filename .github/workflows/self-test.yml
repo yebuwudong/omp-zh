@@ -10,6 +10,19 @@ on:
   workflow_dispatch:
 
 jobs:
+  regressions:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - run: bun test tools/regressions.test.ts
+
   check:
     runs-on: ubuntu-latest
     steps:
@@ -17,7 +30,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install
+      - run: bun install --frozen-lockfile
 
       - name: 下载最新上游产物
         run: |

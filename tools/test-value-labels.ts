@@ -47,8 +47,9 @@ if (start === -1 || end === -1 || end < start) {
 }
 const prologue = code.slice(start, end);
 
-const load = new Function(`${prologue}; return { t: __omp_i18n_t, vlm: __omp_i18n_vlm, vr: __omp_i18n_vr, on: __omp_i18n_on };`) as () => {
+const load = new Function(`${prologue}; return { t: __omp_i18n_t, f: __omp_i18n_f, vlm: __omp_i18n_vlm, vr: __omp_i18n_vr, on: __omp_i18n_on };`) as () => {
 	t: (s: string) => string;
+	f: (s: string) => string;
 	vlm: (o: unknown) => Record<string, string> | undefined;
 	vr: (e: { currentValue?: unknown; values?: string[]; valueLabels?: Record<string, string> }) => string;
 	on: boolean;
@@ -71,6 +72,13 @@ const submenu = (currentValue: string, options: { value: string; label: string }
 });
 
 console.log(`OMP_ZH=0 kill switch active: ${off}, helper flag on: ${h.on}`);
+
+console.log("\nfirst-run setup and complete warning messages:");
+const subtitle = "Sign in to one or more providers. Press {{key}} when you're done.";
+check("setup subtitle", h.t(subtitle).replace("{{key}}", "Esc"), off ? subtitle.replace("{{key}}", "Esc") : "登录一个或多个提供商。完成后按 Esc 继续。");
+check("unrelated English stays intact", h.f("Let me know when you're done."), "Let me know when you're done.");
+const warning = "No default model selected. Use /login, set an API key environment variable, or select a local model with /model or --model.";
+check("complete missing-model warning", h.f(warning), off ? warning : "尚未选择默认模型。请使用 /login 登录，设置 API 密钥环境变量，或通过 /model 或 --model 选择本地模型。");
 
 console.log("\nsubmenu rows (per-setting map from def.options):");
 const resize = submenu("rebuild", [

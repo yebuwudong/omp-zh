@@ -148,17 +148,15 @@ export const compileLooseAnchor = (find: string): LoosePattern => {
 
 /** Replace identifier-shaped tokens word-boundary-safely. */
 export const renameTokens = (text: string, renames: Map<string, string>): string => {
-	let out = text;
-	for (const [from, to] of renames) {
-		if (from === to) continue;
-		// Member chains capture with their leading dot; there is no identifier
-		// boundary to assert on the left (the receiver precedes it).
-		const pattern = from.startsWith(".") || from.startsWith("#")
-			? `${escapeRe(from)}(?![A-Za-z0-9_$])`
-			: `(?<![A-Za-z0-9_$])${escapeRe(from)}(?![A-Za-z0-9_$])`;
-		out = out.replace(new RegExp(pattern, "g"), to);
-	}
-	return out;
+	const names = [...renames].filter(([from, to]) => from !== to).map(([from]) => from)
+		.sort((a, b) => b.length - a.length);
+	if (!names.length) return text;
+	// One pass prevents o→r, r→s from accidentally rewriting o into s too.
+	// Member chains/private fields include their own leading punctuation.
+	const pattern = names.map(from => from.startsWith(".") || from.startsWith("#")
+		? `${escapeRe(from)}(?![A-Za-z0-9_$])`
+		: `(?<![A-Za-z0-9_$])${escapeRe(from)}(?![A-Za-z0-9_$])`).join("|");
+	return text.replace(new RegExp(pattern, "g"), from => renames.get(from)!);
 };
 
 export interface LooseHit {
@@ -190,3 +188,32 @@ export const matchLoose = (code: string, find: string): LooseHit[] => {
 /** Human-readable rename summary for logs (`$3e→Sje`). */
 export const describeRenames = (renames: Map<string, string>): string =>
 	[...renames].filter(([a, b]) => a !== b).map(([a, b]) => `${a}→${b}`).join(", ");
+
+/** Prefer a unique alternative over an ambiguous wildcard; keep ambiguity for callers to reject. */
+export const resolveAnchorSpellings = (
+	code: string,
+	spellings: readonly { find: string; replace: string }[],
+	all = false,
+): { start: number; end: number; replace: string; adapted: string }[] => {
+	for (const spelling of spellings) {
+		const exact: { start: number; end: number; replace: string; adapted: string }[] = [];
+		if (!spelling.find) continue;
+		let start = 0;
+		while ((start = code.indexOf(spelling.find, start)) !== -1) {
+			exact.push({ start, end: start + spelling.find.length, replace: spelling.replace, adapted: "" });
+			start += spelling.find.length;
+		}
+		if (exact.length > 0) return exact;
+	}
+	let ambiguous: ReturnType<typeof resolveAnchorSpellings> = [];
+	for (const spelling of spellings) {
+		const hits = matchLoose(code, spelling.find).map(h => ({
+			start: h.start, end: h.end,
+			replace: renameTokens(spelling.replace, h.renames),
+			adapted: describeRenames(h.renames),
+		}));
+		if (hits.length === 1 || (all && hits.length > 0)) return hits;
+		if (ambiguous.length === 0 && hits.length > 1) ambiguous = hits;
+	}
+	return ambiguous;
+};
