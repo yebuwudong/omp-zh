@@ -93,17 +93,33 @@ bun add -g @oh-my-pi/pi-coding-agent
 
 这种安装**不需要启动器**：改的就是 `omp` 自己要跑的 `dist/cli.js`，敲 `omp` 即为中文。
 
+### Windows 一键安装（PowerShell）
+
+```powershell
+irm https://raw.githubusercontent.com/yebuwudong/omp-zh/main/install.ps1 | iex
 ```
-bun patch.ts apply / verify / restore
+
+自动完成：clone/更新补丁仓库到 `~\.omp-zh`、补齐依赖、应用汉化并校验。日常管理用
+`~\.omp-zh\omp-zh.ps1`：
+
+```powershell
+.\.omp-zh\omp-zh.ps1 apply     # 应用/重新应用（omp 升级后重跑）
+.\.omp-zh\omp-zh.ps1 status    # 环境诊断
+.\.omp-zh\omp-zh.ps1 restore   # 还原英文
 ```
+
+`.ps1` 与 bash 版共用同一套编排逻辑（`patch.ts setup` 子命令），行为一致；
+`install.ps1` 需要 git 或能直连 GitHub 的网络，二者都没有时自动退回 tarball 下载。
 
 已知限制：
 
-- 已验证上述 x64 侧载路径，npm/Bun 全局包和 arm64 尚需真机反馈。
+- @MIXYANG 已在 x64 / PowerShell 7.6.6 / Bun 1.3.14 / omp 18.11.1 真机验证；npm/Bun 全局
+  包与 arm64 尚待真机反馈。
 - Windows 上不做 `chmod` / symlink（前者无意义，后者需要管理员权限或开发者模式），
   启动器改为 `.cmd` 文件。
-- 完整对等的 PowerShell 版 `install.ps1` / `omp-zh.ps1`（自动 clone、更新、一键 apply 等）
-  尚未提供，目前需要手动跑 `bun patch.ts` 子命令。
+- 字节码预编译在 Windows 上跳过：`.cmd` 直接用 bun 跑 JS（启动约 0.9 秒，而非非
+  Windows 的 0.2 秒），因为 `--compile` 产物对 18.11.x 的静态资源加载有额外处理需求
+  （见 #8），收益与风险不成比例。
 
 ## 诊断
 
@@ -383,6 +399,17 @@ if (k === __omp_i18n_t("__proto__") || ...) continue;  // 恒为 false，防护�
 `verify` 断言这两类键永不出现在调用点。
 
 ## 更新日志
+
+### Windows 一键安装（install.ps1 / omp-zh.ps1）
+
+补齐了与 bash 版对等的 Windows 入口：
+
+- `install.ps1`：一行命令安装/更新——clone 或 tarball 拉取补丁仓库、装依赖、执行完整编排。
+- `omp-zh.ps1`：日常管理入口（apply / verify / restore / status / doctor）。
+- 编排逻辑下沉为 `patch.ts setup` 子命令，bash 与 PowerShell 共用同一份实现，
+  「restore-then-apply、verify、值标签断言（含 OMP_ZH=0 回退）、按安装形态提示」四处
+  不再有两份漂移的拷贝。
+- 两个脚本都在 PowerShell 7 下通过解析器校验，`status` / `verify` 在 Linux 的 pwsh 实测通过。
 
 ### 预编译字节码二进制 + Windows 兼容性
 

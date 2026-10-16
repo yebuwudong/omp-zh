@@ -2748,6 +2748,45 @@ if (command === "doctor") {
 } else
 if (command === "report") await report();
 else if (command === "apply") await apply();
+else if (command === "setup") {
+	// One-stop orchestration for the install scripts (bash and PowerShell both
+	// delegate here): restore-then-apply for a clean baseline, verify, the
+	// value-label assertions, and the per-install-shape user hints. Keeping
+	// this in TypeScript means every platform shares one implementation —
+	// omp-zh.sh and omp-zh.ps1 only handle what they must (process spawn,
+	// PATH hints), not patching policy.
+	await migrateBackups();
+	if (await Bun.file(CLI_PATH).exists()) {
+		const head = await Bun.file(CLI_PATH).slice(0, 4_000_000).text();
+		if (head.includes(`var ${DICT_VAR}=`)) {
+			console.log("检测到已有汉化，先还原到原始版本……");
+			await restore();
+		}
+	}
+	await apply();
+	await makeExecutable(CLI_PATH);
+	await verify();
+	const labels = Bun.spawnSync([BUN_PATH, path.join(import.meta.dir, "tools", "test-value-labels.ts")], {
+		cwd: import.meta.dir, stdout: "inherit", stderr: "inherit",
+	});
+	if (labels.exitCode !== 0) throw new Error(`value-label assertions failed (exit ${labels.exitCode})`);
+	const fallback = Bun.spawnSync([BUN_PATH, path.join(import.meta.dir, "tools", "test-value-labels.ts")], {
+		cwd: import.meta.dir, stdout: "ignore", stderr: "ignore",
+		env: { ...process.env, OMP_ZH: "0" },
+	});
+	if (fallback.exitCode !== 0) throw new Error(`OMP_ZH=0 fallback assertions failed (exit ${fallback.exitCode})`);
+	console.log("");
+	if (TARGET.kind === "sidecar") {
+		console.log("注意：本机 omp 是预编译二进制，汉化产物在侧载目录，官方 omp 保持不变。");
+		console.log(`      中文界面请用 \`${IS_WINDOWS ? "omp-zh.cmd" : "omp-zh"}\` 启动。`);
+		console.log("      直接运行 `omp` 仍是英文，这是预期行为。");
+	} else {
+		console.log("注意：本机 omp 是就地汉化，直接运行 `omp` 即为中文。");
+	}
+	console.log("");
+	console.log("汉化完成。若 TUI 已在运行，请退出后重新打开。");
+	console.log(`临时切回英文：OMP_ZH=0 ${TARGET.kind === "sidecar" ? (IS_WINDOWS ? "omp-zh.cmd" : "omp-zh") : "omp"}`);
+}
 else if (command === "native") {
 	if (TARGET.kind !== "sidecar" || !TARGET.version) {
 		console.error("native: 仅二进制安装（侧载）需要预编译，就地安装的 JS 产物已是最优路径");
