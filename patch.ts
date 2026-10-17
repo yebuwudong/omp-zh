@@ -920,14 +920,6 @@ const FRAGMENT_SHORT_KEYS: Record<string, true> = {
 	// Welcome-tip / ask-dialog prefix, wrapped by TEMPLATE_TARGETS so the
 	// fragment translator sees the whole `Tip: <text>` line.
 	"Tip: ": true,
-	// Keybinding hint labels rendered through Oi() (the hints anchor wraps
-	// every label with FN_FRAG). All are single display words; hand-verified
-	// that none appear as logic tokens inside fragment-wrapped strings.
-	"move": true, "select": true, "cancel": true, "close": true,
-	"save": true, "newline": true, "navigate": true, "edit": true,
-	"choose": true, "back": true, "submit": true, "toggle": true,
-	"apply": true, "pick": true, "accept": true, "done": true,
-	"assign": true, "clear": true, "cycle": true, "confirm": true,
 };
 
 /** Own-property-only lookup; never walks the prototype chain. */
@@ -1293,10 +1285,10 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
 		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
 		// 键位提示行（move/select/cancel/save/close…）：全仓库几十处共用 Oi()
-		// 渲染出口，锚定它给每个 label 过一次片段翻译，一处覆盖全部面板。
-		// 用 FN_FRAG 而非 FN：label 是运行时变量，verify 只对 FN 断言字面量
-		// 实参；片段表对这些整词都有词条，且允许未命中原样返回。
-		{ name: "keybinding hints", find: 'i.push(le([O(r.label,"muted")]))', replace: `i.push(le([O(${FN_FRAG}(r.label),"muted")]))` },
+		// 渲染出口。label 是运行时变量，不能走 FN（verify 断言字面量实参），
+		// 也不能走 FN_FRAG（子串替换会污染含同词的英文句子，实测误伤 3000+）。
+		// 直接对运行时词典做 hasOwn 精确查表：命中即用译文，未命中回退原文。
+		{ name: "keybinding hints", find: 'i.push(le([O(r.label,"muted")]))', replace: `i.push(le([O(Object.hasOwn(__omp_i18n_d,r.label)?__omp_i18n_d[r.label]:r.label,"muted")]))` },
 		{ name: "model panel title (provider)", find: 'r=`${t.label} \\xB7 ${t.annotation??"0"} models${n}`;', replace: `r=${FN_FRAG}(\`\${t.label} \\xB7 \${t.annotation??"0"} models\${n}\`);` },
 { name: "status sink", find: "showStatus(e,t){let s=this.ctx.chatContainer.children", replace: `showStatus(e,t){e=${FN_FRAG}(e);let s=this.ctx.chatContainer.children`,
 		  // v18.9: 局部变量 s→n 后首选精确失配，而短锚点的通配兜底会命中 320 个方法（不唯一）。
