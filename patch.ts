@@ -1321,7 +1321,6 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	// v18.8 新增的 goal 模式示例。
 	{ name: "help example: goal mode", find: '`# Start working on a goal immediately\n  ${$e} --goal "Investigate the importer"`', replace: `${FN_FRAG}(\`# Start working on a goal immediately\n  \${$e} --goal "Investigate the importer"\`)` },
 	// CLI flag description composed via template interpolation (`--thinking`).
-	{ name: "thinking flag description", find: "`Set thinking level: ${S5.join(\", \")}`", replace: `${FN_FRAG}(\`Set thinking level: \${S5.join(\", \")}\`)` },
 	// Runtime error/support messages composed via template interpolation.
 	{ name: "cli missing-arg error", find: "`Missing required argument: ${c}`", replace: `${FN_FRAG}(\`Missing required argument: \${c}\`)` },
 	// v18.8: usage 报表消息从模板改为拼接（`${u}` 插值消失），按新拼写补 alts。
@@ -1394,7 +1393,6 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 会话录制状态行：纯渲染文本（`Recording to <path> · /record again to stop`）。
 		// 用 FN_FRAG 包裹，片段表按运行时拼接结果翻译；private 字段名（#$.path）
 		// 不进锚点，匹配时由通配兜底捕获。
-		{ name: "recording status", find: "showStatus(`Recording to ${this.#$.path} \\xB7 /record again to stop`)", replace: `showStatus(${FN_FRAG}(\`Recording to \${this.#$.path} \\xB7 /record again to stop\`))` },
 		// 面板底部键位提示条：20+ 种变体全部由 #Ct() 拼、renderFooter(e,t,n) 统一渲染。
 		// 锚定渲染出口给 t 过一次片段翻译，所有变体（models/providers/type to
 		// search/use for this session/kind/cancel…）一并覆盖，且新增变体无需改锚点。
@@ -1403,31 +1401,85 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		//   holdFocus(){this.#o=`<esc> to close`}
 		//   let s=`<PgUp>/<PgDn> scroll · `
 		// 两段都是纯展示文案，包片段翻译。
-		{ name: "scroll panel close hint", find: 'holdFocus(){this.#o=`${wt("tui.select.cancel")} to close`}', replace: `holdFocus(){this.#o=${FN_FRAG}(\`\${wt("tui.select.cancel")} to close\`)}` },
-		{ name: "scroll panel scroll hint", find: 'let s=`${wt("tui.select.pageUp")}/${wt("tui.select.pageDown")} scroll \\xB7 `', replace: `let s=${FN_FRAG}(\`\${wt("tui.select.pageUp")}/\${wt("tui.select.pageDown")} scroll \xB7 \`)` },
 		// "/" 补全列表里的 skill 汇总行：`29 skills`。计数单位是纯展示文本。
 		// 技能计数：中文不需要复数，直接把单位内联，避免片段替换把
 		// "skills.omp.sh" 这类标识符里的 skills 也换掉。
-		{ name: "slash skill count", find: 'description:`${i} skill${i===1?"":"s"}`', replace: `description:\`\${i} 个技能\`` },
 		// 设置项 description 是带插值的模板串时，静态扫描收不到（只收无插值的），
 		// 需单独包片段翻译。上游这类目前只有两条。
-		{ name: "setting desc: magic keywords", find: "description:`Enable hidden notices for standalone ${eM.map((e)=>e.word).join(\", \")} keywords`", replace: `description:${FN_FRAG}(\`Enable hidden notices for standalone \${eM.map((e)=>e.word).join(", ")} keywords\`)` },
-		{ name: "setting desc: search timeout", find: "description:`Hard timeout for each provider's search transport before web_search advances to the next fallback, in seconds (maximum ${Ett})`", replace: `description:${FN_FRAG}(\`Hard timeout for each provider's search transport before web_search advances to the next fallback, in seconds (maximum \${Ett})\`)` },
 		// /model、/switch 补全项的描述前缀：`Model: <provider>/<id>`。
 		// all:true 因为两个命令共用同一段内联函数。
 		{ name: "slash model desc prefix", find: 'return t?`Model: ${t.provider}/${t.id}`:"Model: none selected"', replace: `return t?${FN_FRAG}(\`Model: \${t.provider}/\${t.id}\`):${FN_FRAG}("Model: none selected")`, all: true },
 		// 设置面板外观页的预览区标题（多处独立字面量）。
-		{ name: "preview label (strong)", find: 'previewLabel:r?e.previewLabel??"Preview:":void 0', replace: `previewLabel:r?e.previewLabel??${FN}("Preview:"):void 0` },
-		{ name: "preview label (muted col)", find: 'le([O("Preview:","muted")])', replace: `le([O(${FN}("Preview:"),"muted")])`, all: true },
-		{ name: "preview label (fg)", find: 'E.fg("muted","Preview:")', replace: `E.fg("muted",${FN}("Preview:"))`, all: true },
 		// 模型/角色选择器的页脚由 aCl() 独立拼好（四个 switch 分支各自 return 模板），
 		// 不经 renderFooter。在调用点包片段翻译，四个分支一并覆盖。
-		{ name: "model picker footer", find: 'a=aCl(this.#p?"task":this.#d?"role":i?"selection":"session")', replace: `a=${FN_FRAG}(aCl(this.#p?"task":this.#d?"role":i?"selection":"session"))` },
-		{ name: "model picker footer suffix", find: 'a+=` \\xB7 ${Be(this.#m)} ${this.#p?"session model":"task model"}`', replace: `a+=${FN_FRAG}(\` \xB7 \${Be(this.#m)} \${this.#p?"session model":"task model"}\`)` },
 		// 双击 Esc 的 getter 描述：带插值的模板，静态扫描收不到。
 		// 鼠标点击聚焦：getter 里用局部变量 ${e} 拼 Shift，静态扫描收不到。
-		{ name: "setting desc: mouse click focus", find: 'get description(){let e=Be("shift");return`Capture mouse clicks in the main session so live subagent cards and HUD rows focus on click, with a hover highlight on the target. Native text selection becomes ${e}+drag and wheel scroll becomes ${e}+wheel while on`}', replace: `get description(){let e=Be("shift");return ${FN_FRAG}(\`Capture mouse clicks in the main session so live subagent cards and HUD rows focus on click, with a hover highlight on the target. Native text selection becomes \${e}+drag and wheel scroll becomes \${e}+wheel while on\`) }` },
-		{ name: "setting desc: double escape", find: 'get description(){return`What pressing ${Be("escape")} twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing`}', replace: `get description(){return ${FN_FRAG}(\`What pressing \${Be("escape")} twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing\`) }` },
+		// 设置项描述里的模板串（含运行时插值）：静态扫描只收无插值模板，
+		// 这类必须靠锚点包片段翻译。
+		// 设置项描述中的模板串（含运行时插值）：静态扫描收不到，必须锚点包片段翻译。
+		{ name: "tpl desc: comma-separated-model-patterns", find: '`Comma-separated model patterns for ${Be("ctrl+p")} cycling`', replace: `${FN_FRAG}(\`Comma-separated model patterns for \${Be("ctrl+p")} cycling\`)` },
+		{ name: "tpl desc: set-thinking-level----i8-join", find: '`Set thinking level: ${I8.join(", ")}`', replace: `${FN_FRAG}(\`Set thinking level: \${I8.join(", ")}\`)` },
+		{ name: "tpl desc: zai---h-label--token-quota", find: '`ZAI ${h.label} Token Quota`', replace: `${FN_FRAG}(\`ZAI \${h.label} Token Quota\`)` },
+		{ name: "tpl desc: zai---m-label--credit-quota", find: '`ZAI ${m.label} Credit Quota`', replace: `${FN_FRAG}(\`ZAI \${m.label} Credit Quota\`)` },
+		{ name: "tpl desc: back-to-the-main-session----r", find: '`Back to the main session  ${r}`', replace: `${FN_FRAG}(\`Back to the main session  \${r}\`)` },
+		{ name: "tpl desc: viewing-subagent---n---what-you", find: '`Viewing subagent ${n}: what you send goes to it`', replace: `${FN_FRAG}(\`Viewing subagent \${n}: what you send goes to it\`)` },
+		{ name: "tpl desc: thinking-effort----l---c", find: '`Thinking effort: ${l}${c}`', replace: `${FN_FRAG}(\`Thinking effort: \${l}\${c}\`)` },
+		{ name: "tpl desc: context---de-this--m--tolowerca", find: '`Context ${De(this.#m).toLowerCase()} exceeds this model\'s limit; picking it compacts first`', replace: `${FN_FRAG}(\`Context \${De(this.#m).toLowerCase()} exceeds this model's limit; picking it compacts first\`)` },
+		{ name: "tpl desc: catch-up-policy--inherit-follow", find: '`Catch-up policy; inherit follows advisor.syncBacklog (currently ${this.#t.syncBacklog??"off"}).`', replace: `${FN_FRAG}(\`Catch-up policy; inherit follows advisor.syncBacklog (currently \${this.#t.syncBacklog??"off"}).\`)` },
+		{ name: "tpl desc: watchdog-yml--xb7---this--s", find: '`WATCHDOG.yml \\xB7 ${this.#s}`', replace: `${FN_FRAG}(\`WATCHDOG.yml \\xB7 \${this.#s}\`)` },
+		{ name: "tpl desc: editing-the---this--s--file--sw", find: '`Editing the ${this.#s} file. Switch to the ${this.#K()} file.`', replace: `${FN_FRAG}(\`Editing the \${this.#s} file. Switch to the \${this.#K()} file.\`)` },
+		{ name: "tpl desc: i--reviews-with-this-model--u", find: '`${i} reviews with this model. Unset, it uses ${o}.`', replace: `${FN_FRAG}(\`\${i} reviews with this model. Unset, it uses \${o}.\`)` },
+		{ name: "tpl desc: how-hard---this--a-advisors-e", find: '`How hard ${this.#a.advisors[e]?.name||"the advisor"} reasons on ${t}.`', replace: `${FN_FRAG}(\`How hard \${this.#a.advisors[e]?.name||"the advisor"} reasons on \${t}.\`)` },
+		{ name: "tpl desc: when---t-name---the-advisor---r", find: '`When ${t.name||"the advisor"} reviews the session.`', replace: `${FN_FRAG}(\`When \${t.name||"the advisor"} reviews the session.\`)` },
+		{ name: "tpl desc: follow-the-global-advisor-syncb", find: '`Follow the global advisor.syncBacklog setting (currently "${n}").`', replace: `${FN_FRAG}(\`Follow the global advisor.syncBacklog setting (currently "\${n}").\`)` },
+		{ name: "tpl desc: how-long-the-session-waits-for", find: '`How long the session waits for ${t.name||"the advisor"}\'s pending reviews.`', replace: `${FN_FRAG}(\`How long the session waits for \${t.name||"the advisor"}'s pending reviews.\`)` },
+		{ name: "tpl desc: what---this--a-advisors-e---nam", find: '`What ${this.#a.advisors[e]?.name||"the advisor"} may call. None grants no tools; read, grep and glob are the default.`', replace: `${FN_FRAG}(\`What \${this.#a.advisors[e]?.name||"the advisor"} may call. None grants no tools; read, grep and glob are the default.\`)` },
+		{ name: "tpl desc: hard-timeout-for-each-provider", find: '`Hard timeout for each provider\'s search transport before web_search advances to the next fallback, in seconds (maximum ${fnt})`', replace: `${FN_FRAG}(\`Hard timeout for each provider's search transport before web_search advances to the next fallback, in seconds (maximum \${fnt})\`)` },
+		{ name: "tpl desc: l-crash--crashed--xb7---l-che", find: '`${l.crash} crashed \\xB7 ${l.checks_failed} checks failed`', replace: `${FN_FRAG}(\`\${l.crash} crashed \\xB7 \${l.checks_failed} checks failed\`)` },
+		{ name: "tpl desc: open---jkl-e---in-your-browser", find: '`Open ${Jkl(e)} in your browser`', replace: `${FN_FRAG}(\`Open \${Jkl(e)} in your browser\`)` },
+		{ name: "tpl desc: stop---u-1--of-the-quick-switch", find: '`Stop ${u+1} of the quick-switch cycle`', replace: `${FN_FRAG}(\`Stop \${u+1} of the quick-switch cycle\`)` },
+		{ name: "tpl desc: backgrounded-as-job---r-async-j", find: '`Backgrounded as job ${r.async.jobId}`', replace: `${FN_FRAG}(\`Backgrounded as job \${r.async.jobId}\`)` },
+		{ name: "tpl desc: wt--tui-select-confirm----to", find: '`${wt("tui.select.confirm")} to select \\xB7 ${wt("tui.select.cancel")} to cancel`', replace: `${FN_FRAG}(\`\${wt("tui.select.confirm")} to select \\xB7 \${wt("tui.select.cancel")} to cancel\`)` },
+		{ name: "tpl desc: wt--tui-input-submit----to-sa", find: '`${wt("tui.input.submit")} to save \\xB7 ${wt("tui.select.cancel")} to cancel`', replace: `${FN_FRAG}(\`\${wt("tui.input.submit")} to save \\xB7 \${wt("tui.select.cancel")} to cancel\`)` },
+		{ name: "tpl desc: wt--tui-select-confirm----to", find: '`${wt("tui.select.confirm")} to edit \\xB7 ${wt("tui.select.cancel")} to go back`', replace: `${FN_FRAG}(\`\${wt("tui.select.confirm")} to edit \\xB7 \${wt("tui.select.cancel")} to go back\`)` , all: true },
+		{ name: "tpl desc: wt--tui-input-submit----to", find: '`  ${wt("tui.input.submit")} to save \\xB7 ${wt("tui.select.cancel")} to cancel \\xB7 Clear field to unset`', replace: `${FN_FRAG}(\`  \${wt("tui.input.submit")} to save \\xB7 \${wt("tui.select.cancel")} to cancel \\xB7 Clear field to unset\`)` , all: true },
+		{ name: "tpl desc: wt--tui-select-confirm----t", find: '`  ${wt("tui.select.confirm")} to select \\xB7 ${wt("tui.select.cancel")} to go back`', replace: `${FN_FRAG}(\`  \${wt("tui.select.confirm")} to select \\xB7 \${wt("tui.select.cancel")} to go back\`)` },
+		{ name: "tpl desc: wt--tui-select-confirm----t", find: '`  ${wt("tui.select.confirm")} to edit provider \\xB7 ${wt("tui.select.cancel")} to go back`', replace: `${FN_FRAG}(\`  \${wt("tui.select.confirm")} to edit provider \\xB7 \${wt("tui.select.cancel")} to go back\`)` },
+		{ name: "tpl desc: max-in-flight-requests----e", find: '`Max In-Flight Requests: ${e}`', replace: `${FN_FRAG}(\`Max In-Flight Requests: \${e}\`)` },
+		{ name: "tpl desc: r-label---xb7---de-r-tokens", find: '`${r.label} \\xB7 ${De(r.tokens)} tokens (${cM(r.tokens,t)})`', replace: `${FN_FRAG}(\`\${r.label} \\xB7 \${De(r.tokens)} tokens (\${cM(r.tokens,t)})\`)` },
+		{ name: "tpl desc: free-space--xb7---de-e-freetoke", find: '`Free space \\xB7 ${De(e.freeTokens)} tokens (${cM(e.freeTokens,t)})`', replace: `${FN_FRAG}(\`Free space \\xB7 \${De(e.freeTokens)} tokens (\${cM(e.freeTokens,t)})\`)` },
+		{ name: "tpl desc: autocompact-buffer--xb7---de-e", find: '`Autocompact buffer \\xB7 ${De(e.autoCompactBufferTokens)} tokens (${cM(e.autoCompactBufferTokens,t)})`', replace: `${FN_FRAG}(\`Autocompact buffer \\xB7 \${De(e.autoCompactBufferTokens)} tokens (\${cM(e.autoCompactBufferTokens,t)})\`)` },
+		{ name: "tpl desc: auto-compaction-at---cm-o-t-0", find: '`Auto-compaction at ${cM(o,t,0)} \\xB7 ${De(o)} tokens`', replace: `${FN_FRAG}(\`Auto-compaction at \${cM(o,t,0)} \\xB7 \${De(o)} tokens\`)` },
+		{ name: "tpl desc: compaction-summary-starts-at", find: '`Compaction summary starts at ${Math.round(y*100)}%`', replace: `${FN_FRAG}(\`Compaction summary starts at \${Math.round(y*100)}%\`)` },
+		{ name: "tpl desc: auto-compact-at---math-round-f", find: '`Auto-compact at ${Math.round(f.thresholdPercent)}%`', replace: `${FN_FRAG}(\`Auto-compact at \${Math.round(f.thresholdPercent)}%\`)` , all: true },
+		{ name: "tpl desc: enable-hidden-notices-for-stand", find: '`Enable hidden notices for standalone ${hM.map((e)=>e.word).join(", ")} keywords`', replace: `${FN_FRAG}(\`Enable hidden notices for standalone \${hM.map((e)=>e.word).join(", ")} keywords\`)` },
+		{ name: "tpl desc: mnemopi-embed-server-for---e", find: '`mnemopi embed server for ${e}`', replace: `${FN_FRAG}(\`mnemopi embed server for \${e}\`)` },
+		{ name: "tpl desc: tiny-onnx-worker-for---e", find: '`tiny onnx worker for ${e}`', replace: `${FN_FRAG}(\`tiny onnx worker for \${e}\`)` },
+		{ name: "tpl desc: tiny-mlx-worker-for---e", find: '`tiny mlx worker for ${e}`', replace: `${FN_FRAG}(\`tiny mlx worker for \${e}\`)` },
+		{ name: "tpl desc: project-environment-at---n", find: '`project environment at ${n}`', replace: `${FN_FRAG}(\`project environment at \${n}\`)` },
+		{ name: "tpl desc: omp-managed-environment-at---i", find: '`OMP-managed environment at ${i}`', replace: `${FN_FRAG}(\`OMP-managed environment at \${i}\`)` },
+		{ name: "tpl desc: cloud-source-evidence---a-1", find: '`Cloud source evidence ${a+1}`', replace: `${FN_FRAG}(\`Cloud source evidence \${a+1}\`)` },
+		{ name: "tpl desc: resume----xs-e----xb7-----xs--e", find: '`Resume  ${xs(e)} \\xB7   ${xs("enter")} \\xB7   ${xs("space")}`', replace: `${FN_FRAG}(\`Resume  \${xs(e)} \\xB7   \${xs("enter")} \\xB7   \${xs("space")}\`)` },
+		{ name: "tpl desc: redeem-now-and-remember-yes-for", find: '`Redeem now and remember yes for future eligible ${r} resets.`', replace: `${FN_FRAG}(\`Redeem now and remember yes for future eligible \${r} resets.\`)` },
+		{ name: "tpl desc: do-not-auto-redeem-saved---r--r", find: '`Do not auto-redeem saved ${r} resets.`', replace: `${FN_FRAG}(\`Do not auto-redeem saved \${r} resets.\`)` },
+		{ name: "tpl desc: run-all---e-length--discovered", find: '`Run all ${e.length} discovered checker${e.length===1?"":"s"}`', replace: `${FN_FRAG}(\`Run all \${e.length} discovered checker\${e.length===1?"":"s"}\`)` , all: true },
+		{ name: "tpl desc: this--o--of---this--i--repair", find: '`${this.#o} of ${this.#i} repair lanes finished`', replace: `${FN_FRAG}(\`\${this.#o} of \${this.#i} repair lanes finished\`)` },
+		{ name: "tpl desc: advisor-status----e-advisors-le", find: '`Advisor Status (${e.advisors.length} advisors)`', replace: `${FN_FRAG}(\`Advisor Status (\${e.advisors.length} advisors)\`)` },
+		{ name: "tpl desc: retrying--xb7-attempt---e-attem", find: '`Retrying \\xB7 attempt ${e.attempt} of ${e.maxAttempts}`', replace: `${FN_FRAG}(\`Retrying \\xB7 attempt \${e.attempt} of \${e.maxAttempts}\`)` },
+		{ name: "tpl desc: approve-this-call--n------xs-n", find: '`Approve this call${n?`  ${xs(n)}`:""}`', replace: `${FN_FRAG}(\`Approve this call\${n?\`  \${xs(n)}\`:""}\`)` },
+		{ name: "tpl desc: show-the-question--i------xs-i", find: '`Show the question${i?`  ${xs(i)}`:""}`', replace: `${FN_FRAG}(\`Show the question\${i?\`  \${xs(i)}\`:""}\`)` },
+		{ name: "tpl desc: skip-without-answering--n", find: '`Skip without answering${n?`  ${xs(n)}`:""}`', replace: `${FN_FRAG}(\`Skip without answering\${n?\`  \${xs(n)}\`:""}\`)` },
+		{ name: "tpl desc: hide-until-you-are-ready-to-ans", find: '`Hide until you are ready to answer${i?`  ${xs(i)}`:""}`', replace: `${FN_FRAG}(\`Hide until you are ready to answer\${i?\`  \${xs(i)}\`:""}\`)` },
+		{ name: "tpl desc: i--messages-queued", find: '`${i} messages queued`', replace: `${FN_FRAG}(\`\${i} messages queued\`)` },
+		{ name: "tpl desc: wt--tui-select-cancel----to-p", find: '`${wt("tui.select.cancel")} to paste inline`', replace: `${FN_FRAG}(\`\${wt("tui.select.cancel")} to paste inline\`)` },
+		{ name: "tpl desc: r---role-aliases-like--smol-a", find: '`${r} (role aliases like @smol and :level suffixes work; empty clears)`', replace: `${FN_FRAG}(\`\${r} (role aliases like @smol and :level suffixes work; empty clears)\`)` },
+		{ name: "tpl desc: resets---e-e-n-----n-getfullyea", find: '`Resets ${e$e(n)} ${n.getFullYear()}, ${dAr(n)} (in ${gt(t)})`', replace: `${FN_FRAG}(\`Resets \${e$e(n)} \${n.getFullYear()}, \${dAr(n)} (in \${gt(t)})\`)` },
+		{ name: "tpl desc: daybreak-access--xb7---s", find: '`Daybreak access \\xB7 ${s}`', replace: `${FN_FRAG}(\`Daybreak access \\xB7 \${s}\`)` },
+		{ name: "tpl desc: to-see---e-runningagents--runni", find: '`to see ${e.runningAgents} running ${e.runningAgents===1?"agent":"agents"}`', replace: `${FN_FRAG}(\`to see \${e.runningAgents} running \${e.runningAgents===1?"agent":"agents"}\`)` },
+		{ name: "tpl desc: ast-edit----b-totalreplacements", find: '`AST Edit: ${b.totalReplacements} replacement${F} in ${b.filesTouched} file${G}`', replace: `${FN_FRAG}(\`AST Edit: \${b.totalReplacements} replacement\${F} in \${b.filesTouched} file\${G}\`)` },
+		{ name: "tpl desc: review-pr---a-repo----a-number", find: '`Review PR ${a.repo}#${a.number} from conversation`', replace: `${FN_FRAG}(\`Review PR \${a.repo}#\${a.number} from conversation\`)` },
+		{ name: "tpl desc: pending-mcp-tool----o", find: '`Pending MCP tool. ${o}`', replace: `${FN_FRAG}(\`Pending MCP tool. \${o}\`)` },
+		{ name: "tpl desc: action----efn-join----------def", find: '`Action: ${efn.join(" | ")} (default serve)`', replace: `${FN_FRAG}(\`Action: \${efn.join(" | ")} (default serve)\`)` },
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
 		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
@@ -1685,10 +1737,18 @@ const classifyLiteral = (node: AstNode, parents: AstNode[]): Classified => {
 
 // ── scan ────────────────────────────────────────────────────────────────────
 
+interface TemplateSite {
+	start: number;
+	end: number;
+	snippet: string;
+}
+
 interface ScanOutcome {
 	occurrences: Map<string, Occurrence[]>;
 	totalLiterals: number;
 	dictMatched: number;
+	/** Display-position template literals, wrapped with the fragment helper. */
+	templateSites: TemplateSite[];
 }
 
 /**
@@ -1755,14 +1815,78 @@ const findGroupSites = (ast: AstNode): GroupSites => {
 	return { propStarts, arrayStarts };
 };
 
+/**
+ * Is this template literal in a position whose finished string reaches the
+ * screen? Two shapes cover everything the settings panel and overlays render:
+ *
+ *   - direct value of a display-keyed property (`description:\`...\``);
+ *   - the expression returned by a getter for such a key
+ *     (`get description(){return \`...\`}`) — the parent chain here is
+ *     ReturnStatement → BlockStatement → ObjectMethod/ClassMethod, so the
+ *     key lives a few levels up, not on the immediate parent.
+ *
+ * Plain literals at these positions already flow through the dict scan; the
+ * templates are the gap, because a template never equals a dictionary key.
+ */
+const isDisplayTemplate = (node: AstNode, parents: AstNode[]): boolean => {
+	const parent = parents[parents.length - 1];
+	if (!parent) return false;
+	const keyIsDisplay = (n: AstNode | undefined): boolean => {
+		if (!n) return false;
+		if (n.type !== "ObjectProperty" && n.type !== "ClassProperty" &&
+			n.type !== "ObjectMethod" && n.type !== "ClassMethod" &&
+			n.type !== "PropertyDefinition" && n.type !== "ClassPrivateMethod") return false;
+		const key = propKeyOf(n);
+		return Boolean(key) && DISPLAY_KEYS[key] === true;
+	};
+	if (parent.value === node && keyIsDisplay(parent)) return true;
+	// getter / method body: walk up to the enclosing member
+	for (let i = parents.length - 1; i >= Math.max(0, parents.length - 4); i--) {
+		const q = parents[i];
+		if (q.type === "ObjectMethod" || q.type === "ClassMethod" ||
+			q.type === "ClassPrivateMethod" || q.type === "PropertyDefinition") {
+			return keyIsDisplay(q);
+		}
+		if (q.type === "ObjectProperty" || q.type === "ClassProperty") break;
+	}
+	return false;
+};
+
 const scanBundle = (code: string, dict: Record<string, string>): ScanOutcome => {
 	const ast = parse(code, { sourceType: "module", errorRecovery: true }) as unknown as AstNode;
 	const occurrences = new Map<string, Occurrence[]>();
 	const groups = findGroupSites(ast);
 	let totalLiterals = 0;
 	let dictMatched = 0;
+	const templateSites: TemplateSite[] = [];
 
 	const visit = (node: AstNode, parents: AstNode[]): void => {
+		// Display-position templates wrap in the fragment helper: the finished
+		// string can never be a dictionary key, and its static fragments are
+		// looked up at runtime instead. Schema-classified subtrees keep their
+		// English (model-facing docs), as do templates without prose.
+		if (node.type === "TemplateLiteral" && typeof node.start === "number") {
+			const quasis = (node.quasis ?? []) as { value?: { raw?: string; cooked?: string } }[];
+			const text = quasis.map(q => String(q.value?.cooked ?? q.value?.raw ?? "")).join("");
+			const hasExpr = ((node.expressions ?? []) as AstNode[]).length > 0;
+			if (text.length >= 12 && !/[\u4e00-\u9fff]/.test(text) &&
+				/[A-Za-z]{3,}[^A-Za-z]*[A-Za-z]{3,}/.test(text.replace(/\\x[0-9a-fA-F]{2}/g, " "))) {
+				const { role } = classifyLiteral(node, parents);
+				// `String.raw\`...\`` feeds RegExp/source material: wrapping the
+				// template would splice a call between the tag and its literal,
+				// which is a syntax error. The classifier cannot see the tag from
+				// the literal alone, so check the immediate parent here.
+				const immediateParent = parents[parents.length - 1];
+				// The template literal IS the tagged expression's `quasi`.
+				const tagged = immediateParent?.type === "TaggedTemplateExpression" && immediateParent.quasi === node;
+				if (!tagged && role !== "schema" && role !== "logic" && role !== "dataValue" &&
+					(isDisplayTemplate(node, parents) || hasExpr)) {
+					const from = Math.max(0, node.start - 90);
+					const to = Math.min(code.length, (node.end ?? node.start) + 90);
+					templateSites.push({ start: node.start, end: node.end ?? node.start, snippet: code.slice(from, to).replace(/\n/g, "↵") });
+				}
+			}
+		}
 		if (node.type === "StringLiteral" && typeof node.value === "string" && typeof node.start === "number") {
 			totalLiterals++;
 			const value = node.value;
@@ -1795,7 +1919,7 @@ const scanBundle = (code: string, dict: Record<string, string>): ScanOutcome => 
 	};
 	visit(ast, []);
 
-	return { occurrences, totalLiterals, dictMatched };
+	return { occurrences, totalLiterals, dictMatched, templateSites };
 };
 
 // ── decision ────────────────────────────────────────────────────────────────
@@ -2034,7 +2158,7 @@ const report = async (): Promise<void> => {
 	const usePristine = installed.includes(`var ${DICT_VAR}=`) && pristine !== null;
 	const code = await Bun.file(usePristine ? pristine as string : CLI_PATH).text();
 	if (usePristine) console.log(`(installed bundle is patched — reporting on ${path.basename(pristine as string)})\n`);
-	const { occurrences, totalLiterals, dictMatched } = scanBundle(code, dict);
+	const { occurrences, totalLiterals, dictMatched, templateSites } = scanBundle(code, dict);
 	const verdicts = decideAll(occurrences, dict);
 	const blocks = findBlocks(code, dict);
 
@@ -2206,7 +2330,7 @@ const apply = async (): Promise<void> => {
 			`bundle already patched (found ${DICT_VAR}); run \`bun patch.ts restore\` first`,
 		);
 	}
-	const { occurrences } = scanBundle(code, dict);
+const { occurrences, templateSites } = scanBundle(code, dict);
 	const verdicts = decideAll(occurrences, dict);
 	const blocks = findBlocks(code, dict);
 	const ops = collectOps(verdicts, blocks);
@@ -2238,6 +2362,10 @@ const apply = async (): Promise<void> => {
 		...ops.map(o => ({ start: o.start, end: o.end, wrap: (o.key === "<block>" ? FN_BLOCK : FN) as string | null, kind: "literal" as const })),
 		...rescuedOps.map(o => ({ start: o.start, end: o.end, wrap: FN as string | null, kind: "literal" as const })),
 		...tmplOps.map(o => ({ start: o.start, end: o.end, wrap: FN_FRAG as string | null, kind: "template" as const })),
+		// Generic scan result: every display-position template (direct property
+		// values and getter returns alike) wraps in the fragment helper. Ranked
+		// below anchors — an exact anchor span still wins on collision.
+		...templateSites.map(o => ({ start: o.start, end: o.end, wrap: FN_FRAG as string | null, kind: "template" as const })),
 	];
 	allOps.sort((a, b) => a.start - b.start || b.end - a.end);
 	const kept: typeof allOps = [];
@@ -2740,7 +2868,7 @@ const check = async (codePath?: string, jsonPath?: string): Promise<void> => {
 	}
 	console.log(`checking ${target} (${(code.length / 1e6).toFixed(2)}MB)`);
 
-	const { occurrences } = scanBundle(code, dict);
+	const { occurrences, templateSites } = scanBundle(code, dict);
 	const verdicts = decideAll(occurrences, dict);
 	const blocks = findBlocks(code, dict);
 	const ops = collectOps(verdicts, blocks);
