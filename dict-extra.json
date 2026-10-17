@@ -502,6 +502,7 @@
  "Amazon S3": "Amazon S3",
  "Amend the previous commit": "修正上一个提交",
  "Annotate": "标注",
+ "Annotate a diff or text from a file, prompt, latest reply, or session": "标注来自文件、提示词、最近回复或会话的 diff 或文本",
  "Annotate a file by path": "按路径标注文件",
  "Annotate a local diff before review": "审查前标注本地 diff",
  "Annotate a message or code block from this session": "标注来自此会话的消息或代码块",

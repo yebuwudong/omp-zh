@@ -944,6 +944,11 @@ const STRUCTURAL_UI_STRINGS: Record<string, true> = {
 	ARGUMENTS: true,
 	FLAGS: true,
 	EXAMPLES: true,
+	// Slash-command class field (`class mwt{api;name="annotate";description="..."}`):
+	// the description renders in the "/" completion list, but a ClassBody
+	// field is classified `schema:toolClass` because most such fields are
+	// model-facing tool schemas. This one is UI.
+	"Annotate a diff or text from a file, prompt, latest reply, or session": true,
 	// daemon table header (jJ) — members are rendered verbatim, never compared
 	NAME: true,
 	STATE: true,
@@ -2804,16 +2809,15 @@ else if (command === "setup") {
 	});
 	if (fallback.exitCode !== 0) throw new Error(`OMP_ZH=0 fallback assertions failed (exit ${fallback.exitCode})`);
 	console.log("");
-	if (TARGET.kind === "sidecar") {
-		console.log("注意：本机 omp 是预编译二进制，汉化产物在侧载目录，官方 omp 保持不变。");
-		console.log(`      中文界面请用 \`${IS_WINDOWS ? "omp-zh.cmd" : "omp-zh"}\` 启动。`);
-		console.log("      直接运行 `omp` 仍是英文，这是预期行为。");
-	} else {
-		console.log("注意：本机 omp 是就地汉化，直接运行 `omp` 即为中文。");
-	}
+	const launchCmd = TARGET.kind === "sidecar" ? (IS_WINDOWS ? "omp-zh.cmd" : "omp-zh") : "omp";
 	console.log("");
-	console.log("汉化完成。若 TUI 已在运行，请退出后重新打开。");
-	console.log(`临时切回英文：OMP_ZH=0 ${TARGET.kind === "sidecar" ? (IS_WINDOWS ? "omp-zh.cmd" : "omp-zh") : "omp"}`);
+	console.log("汉化完成。");
+	console.log(`  启动：${launchCmd}`);
+	if (TARGET.kind === "sidecar") {
+		console.log("        （官方 omp 二进制未改动，直接运行 omp 仍是英文）");
+	}
+	console.log(`  还原：OMP_ZH=0 ${launchCmd}   或   bun patch.ts restore`);
+	console.log("  TUI 若已在运行，需退出后重新打开才会加载新界面。");
 }
 else if (command === "native") {
 	if (TARGET.kind !== "sidecar" || !TARGET.version) {

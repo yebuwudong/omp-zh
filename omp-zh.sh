@@ -58,14 +58,14 @@ apply)
 	# UI behind `omp-zh`; running plain `omp` then looks like a failed patch.
 	# The sidecar layout is the tell, and patch.ts already linked the launcher
 	# into ~/.local/bin, so point the user at the command that actually works.
+	echo
+	echo "汉化完成。"
+	echo "  启动：omp-zh"
 	if [[ "$CLI" == *"/.omp-zh/runtime/"* ]]; then
-		echo "注意：本机 omp 是预编译二进制，汉化产物在侧载目录，官方 omp 保持不变。"
-		echo "      中文界面请用 \`omp-zh\` 启动（已自动链接到 ~/.local/bin，新开终端生效）。"
-		echo "      直接运行 \`omp\` 仍是英文，这是预期行为。"
-		echo
+		echo "        （官方 omp 二进制未改动，直接运行 omp 仍是英文）"
 	fi
-	echo "汉化完成。若 TUI 已在运行，请退出后重新打开。"
-	echo "临时切回英文：OMP_ZH=0 omp-zh"
+	echo "  还原：OMP_ZH=0 omp-zh   或   ./omp-zh.sh restore"
+	echo "  TUI 若已在运行，需退出后重新打开才会加载新界面。"
 	;;
 test)
 	run_patch verify
