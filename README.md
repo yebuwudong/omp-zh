@@ -1,5 +1,9 @@
 # omp 中文界面汉化
 
+<p align="center">
+  <img src="assets/logo.svg" alt="omp-zh" width="720">
+</p>
+
 [![LINUX DO](https://img.shields.io/badge/社区-LINUX%20DO-blue)](https://linux.do)
 [![License: MIT](https://img.shields.io/badge/许可-MIT-green)](./LICENSE)
 

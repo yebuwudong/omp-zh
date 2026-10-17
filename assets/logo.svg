@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="480" viewBox="0 0 1440 480">
+<defs>
+  <linearGradient id="zhg" gradientUnits="userSpaceOnUse" x1="1010" y1="0" x2="1400" y2="0"><stop offset="0" stop-color="#c44fe0"/><stop offset="1" stop-color="#7c5cff"/></linearGradient>
+</defs>
+<rect x="80" y="130" width="57.2" height="52" fill="#ff4fc8"/>
+<rect x="137.2" y="130" width="57.2" height="52" fill="#c44fe0"/>
+<rect x="194.4" y="130" width="57.2" height="52" fill="#9b4fe8"/>
+<rect x="251.6" y="130" width="57.2" height="52" fill="#7c5cff"/>
+<rect x="137.2" y="182" width="57.2" height="52" fill="#c44fe0"/>
+<rect x="137.2" y="234" width="57.2" height="52" fill="#9b4fe8"/>
+<rect x="137.2" y="286.0" width="14.3" height="14.3" fill="#9b4fe8"/><rect x="165.8" y="286.0" width="14.3" height="14.3" fill="#9b4fe8"/><rect x="151.5" y="300.29999999999995" width="14.3" height="14.3" fill="#9b4fe8"/><rect x="180.10000000000002" y="300.29999999999995" width="14.3" height="14.3" fill="#9b4fe8"/><rect x="137.2" y="314.6" width="14.3" height="14.3" fill="#9b4fe8"/><rect x="165.8" y="314.6" width="14.3" height="14.3" fill="#9b4fe8"/><rect x="151.5" y="328.9" width="14.3" height="14.3" fill="#9b4fe8"/><rect x="180.10000000000002" y="328.9" width="14.3" height="14.3" fill="#9b4fe8"/>
+<rect x="194.4" y="182" width="57.2" height="52" fill="#7c5cff"/>
+<rect x="194.4" y="234" width="57.2" height="41.6" fill="#5a8cff"/>
+<rect x="194.4" y="275.6" width="57.2" height="41.6" fill="#4fc8e8"/>
+  <g fill="url(#zhg)"><rect x="500" y="160" width="120" height="30"/><rect x="500" y="250" width="120" height="30"/><rect x="500" y="160" width="30" height="120"/><rect x="590" y="160" width="30" height="120"/></g>
+  <g fill="url(#zhg)"><rect x="650" y="160" width="180" height="30"/><rect x="650" y="160" width="30" height="120"/><rect x="725" y="160" width="30" height="120"/><rect x="800" y="160" width="30" height="120"/></g>
+  <g fill="url(#zhg)"><rect x="860" y="160" width="30" height="150"/><rect x="860" y="160" width="120" height="30"/><rect x="890" y="250" width="90" height="30"/><rect x="950" y="190" width="30" height="90"/></g>
+  <g fill="url(#zhg)"><rect x="1010" y="205" width="90" height="30"/></g>
+  <g fill="url(#zhg)"><rect x="1130" y="160" width="120" height="30"/><rect x="1130" y="250" width="120" height="30"/><rect x="1190" y="190" width="30" height="30"/><rect x="1160" y="220" width="30" height="30"/></g>
+  <g fill="url(#zhg)"><rect x="1280" y="160" width="30" height="120"/><rect x="1310" y="205" width="90" height="30"/><rect x="1370" y="205" width="30" height="75"/></g>
+</svg>
