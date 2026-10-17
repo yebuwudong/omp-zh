@@ -1308,6 +1308,14 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 锚定渲染出口给 t 过一次片段翻译，所有变体（models/providers/type to
 		// search/use for this session/kind/cancel…）一并覆盖，且新增变体无需改锚点。
 		{ name: "panel footer bar", find: "renderFooter(e,t,n){return this.chipRanges=[],n?n():ce(E.fg(\"dim\",t),e)}", replace: `renderFooter(e,t,n){t=${FN_FRAG}(t);return this.chipRanges=[],n?n():ce(E.fg("dim",t),e)}` },
+		// 滚动型面板的页脚不经 renderFooter，而是自己拼好再 setText：
+		//   holdFocus(){this.#o=`<esc> to close`}
+		//   let s=`<PgUp>/<PgDn> scroll · `
+		// 两段都是纯展示文案，包片段翻译。
+		{ name: "scroll panel close hint", find: 'holdFocus(){this.#o=`${wt("tui.select.cancel")} to close`}', replace: `holdFocus(){this.#o=${FN_FRAG}(\`\${wt("tui.select.cancel")} to close\`)}` },
+		{ name: "scroll panel scroll hint", find: 'let s=`${wt("tui.select.pageUp")}/${wt("tui.select.pageDown")} scroll \\xB7 `', replace: `let s=${FN_FRAG}(\`\${wt("tui.select.pageUp")}/\${wt("tui.select.pageDown")} scroll \xB7 \`)` },
+		// "/" 补全列表里的 skill 汇总行：`29 skills`。计数单位是纯展示文本。
+		{ name: "slash skill count", find: 'description:`${i} skill${i===1?"":"s"}`', replace: `description:${FN_FRAG}(\`\${i} skill\${i===1?"":"s"}\`)` },
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
 		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
