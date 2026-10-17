@@ -400,6 +400,18 @@ if (k === __omp_i18n_t("__proto__") || ...) continue;  // 恒为 false，防护�
 
 ## 更新日志
 
+### TUI 面板残留英文系统性覆盖
+
+真机反馈「模型面板、设置页仍有英文」后，按渲染出口分层修复：
+
+- **面板底栏**：20+ 种变体全部由 `renderFooter(e,t,n)` 统一渲染，锚定该出口过一次
+  片段翻译，全部变体覆盖且对上游新增免疫。
+- **模型面板标题**：`All available models` / `<提供商> · N models` 两种形态分别锚定。
+- **键位提示行**（move/select/cancel/save…）：全仓库几十处共用 `Oi()` 渲染出口，
+  锚定它给每个 label 过翻译；短词经 `FRAGMENT_SHORT_KEYS` 豁免长度下限。
+- **设置描述**：补 4 条 18.11.1 新增长文案（含一条 getter 拼装，走片段翻译）。
+- 逻辑枚举名（如面板底栏的 `kind`）有意保留英文——它们参与 `switch` 判断。
+
 ### Windows 一键安装（install.ps1 / omp-zh.ps1）
 
 补齐了与 bash 版对等的 Windows 入口：

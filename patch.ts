@@ -920,6 +920,14 @@ const FRAGMENT_SHORT_KEYS: Record<string, true> = {
 	// Welcome-tip / ask-dialog prefix, wrapped by TEMPLATE_TARGETS so the
 	// fragment translator sees the whole `Tip: <text>` line.
 	"Tip: ": true,
+	// Keybinding hint labels rendered through Oi() (the hints anchor wraps
+	// every label with FN_FRAG). All are single display words; hand-verified
+	// that none appear as logic tokens inside fragment-wrapped strings.
+	"move": true, "select": true, "cancel": true, "close": true,
+	"save": true, "newline": true, "navigate": true, "edit": true,
+	"choose": true, "back": true, "submit": true, "toggle": true,
+	"apply": true, "pick": true, "accept": true, "done": true,
+	"assign": true, "clear": true, "cycle": true, "confirm": true,
 };
 
 /** Own-property-only lookup; never walks the prototype chain. */
@@ -1277,6 +1285,19 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 用 FN_FRAG 包裹，片段表按运行时拼接结果翻译；private 字段名（#$.path）
 		// 不进锚点，匹配时由通配兜底捕获。
 		{ name: "recording status", find: "showStatus(`Recording to ${this.#$.path} \\xB7 /record again to stop`)", replace: `showStatus(${FN_FRAG}(\`Recording to \${this.#$.path} \\xB7 /record again to stop\`))` },
+		// 面板底部键位提示条：20+ 种变体全部由 #Ct() 拼、renderFooter(e,t,n) 统一渲染。
+		// 锚定渲染出口给 t 过一次片段翻译，所有变体（models/providers/type to
+		// search/use for this session/kind/cancel…）一并覆盖，且新增变体无需改锚点。
+		{ name: "panel footer bar", find: "renderFooter(e,t,n){return this.chipRanges=[],n?n():ce(E.fg(\"dim\",t),e)}", replace: `renderFooter(e,t,n){t=${FN_FRAG}(t);return this.chipRanges=[],n?n():ce(E.fg("dim",t),e)}` },
+		// 模型面板标题：两种形态（All available models / <提供商> · N models），
+		// 片段翻译拼好的整串（"N models" 等在片段表内）。
+		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
+		// 键位提示行（move/select/cancel/save/close…）：全仓库几十处共用 Oi()
+		// 渲染出口，锚定它给每个 label 过一次片段翻译，一处覆盖全部面板。
+		// 用 FN_FRAG 而非 FN：label 是运行时变量，verify 只对 FN 断言字面量
+		// 实参；片段表对这些整词都有词条，且允许未命中原样返回。
+		{ name: "keybinding hints", find: 'i.push(le([O(r.label,"muted")]))', replace: `i.push(le([O(${FN_FRAG}(r.label),"muted")]))` },
+		{ name: "model panel title (provider)", find: 'r=`${t.label} \\xB7 ${t.annotation??"0"} models${n}`;', replace: `r=${FN_FRAG}(\`\${t.label} \\xB7 \${t.annotation??"0"} models\${n}\`);` },
 { name: "status sink", find: "showStatus(e,t){let s=this.ctx.chatContainer.children", replace: `showStatus(e,t){e=${FN_FRAG}(e);let s=this.ctx.chatContainer.children`,
 		  // v18.9: 局部变量 s→n 后首选精确失配，而短锚点的通配兜底会命中 320 个方法（不唯一）。
 		  // 加一条当前拼写（含后续判别式）作为 alt，精确匹配优先命中；旧版本仍走首选。
