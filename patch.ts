@@ -1214,7 +1214,11 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		{ name: "force autocomplete desc", find: "t===0?\"Force: no active tools\":`Force: ${t} active tools`", replace: `t===0?${FN_FRAG}(\"Force: no active tools\"):${FN_FRAG}(\`Force: \${t} active tools\`)` },
 		{ name: "green cmd desc", find: "description=\"Generate a prompt to iterate on CI failures until the branch is green\"", replace: `description=${FN}(\"Generate a prompt to iterate on CI failures until the branch is green\")` },
 		{ name: "review cmd desc", find: "description=\"Launch interactive code review\"", replace: `description=${FN}(\"Launch interactive code review\")` },
-		{ name: "init cmd desc", find: "description: Generate AGENTS.md for current codebase", replace: `description: ${FN}(\"Generate AGENTS.md for current codebase\")` },
+		// /init 是 markdown 命令：这一行是 frontmatter **数据**，不是会被求值的
+		// JS。包 helper 会把调用源码当成字符串塞进 description，运行时补全列表
+		// 再过一次片段翻译，就显示成 `__omp_i18n_t("为当前代码库生成…")`（#6 真机
+		// 反馈）。直接写译文。
+		{ name: "init cmd desc", find: "description: Generate AGENTS.md for current codebase", replace: "description: 为当前代码库生成 AGENTS.md" },
 		{ name: "update notification", find: "`New version ${e} is available. Run: `", replace: `${FN_FRAG}(\`New version \${e} is available. Run: \`)` },
 		{ name: "tool output expansion status", find: "`Tool output expansion: ${this.ctx.toolOutputExpanded?\"enabled\":\"disabled\"}`", replace: `${FN_FRAG}(\`Tool output expansion: \${this.ctx.toolOutputExpanded?\"enabled\":\"disabled\"}\`)` },
 				// Settings panel bottom hint bar: fragment-translate the concatenated
