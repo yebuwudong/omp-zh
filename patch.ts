@@ -999,6 +999,13 @@ const SPLIT_UI_STRINGS: Record<string, true> = {
 	// settings sidebar group (also `super("Theme")` border title, which the
 	// anchor table rewrites separately)
 	Theme: true,
+	// plan-mode options: rendered as choice labels, but also matched as
+	// `P==="..."` decision strings and embedded in markdown option lists
+	"Approve and compact context": true,
+	"Approve and execute": true,
+	"Refine plan": true,
+	// plan/tooling description rendered with a choice label elsewhere
+	"Approve a pending tool call": true,
 	// tool rows in Settings → Tools and the matching tool-call renderers
 	// (also tool-class `label=` display fields, which stay English)
 	Debug: true,
@@ -1266,6 +1273,10 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		  ] },
 		// showError root renderer: same sink approach as status/warning.
 		{ name: "error sink", find: "showError(e){let t=new re(`Error: ${e}`,1,0)", replace: `showError(e){e=${FN_FRAG}(e);let t=new re(\`Error: \${e}\`,1,0)` },
+		// 会话录制状态行：纯渲染文本（`Recording to <path> · /record again to stop`）。
+		// 用 FN_FRAG 包裹，片段表按运行时拼接结果翻译；private 字段名（#$.path）
+		// 不进锚点，匹配时由通配兜底捕获。
+		{ name: "recording status", find: "showStatus(`Recording to ${this.#$.path} \\xB7 /record again to stop`)", replace: `showStatus(${FN_FRAG}(\`Recording to \${this.#$.path} \\xB7 /record again to stop\`))` },
 { name: "status sink", find: "showStatus(e,t){let s=this.ctx.chatContainer.children", replace: `showStatus(e,t){e=${FN_FRAG}(e);let s=this.ctx.chatContainer.children`,
 		  // v18.9: 局部变量 s→n 后首选精确失配，而短锚点的通配兜底会命中 320 个方法（不唯一）。
 		  // 加一条当前拼写（含后续判别式）作为 alt，精确匹配优先命中；旧版本仍走首选。
