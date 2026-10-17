@@ -1315,7 +1315,16 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		{ name: "scroll panel close hint", find: 'holdFocus(){this.#o=`${wt("tui.select.cancel")} to close`}', replace: `holdFocus(){this.#o=${FN_FRAG}(\`\${wt("tui.select.cancel")} to close\`)}` },
 		{ name: "scroll panel scroll hint", find: 'let s=`${wt("tui.select.pageUp")}/${wt("tui.select.pageDown")} scroll \\xB7 `', replace: `let s=${FN_FRAG}(\`\${wt("tui.select.pageUp")}/\${wt("tui.select.pageDown")} scroll \xB7 \`)` },
 		// "/" 补全列表里的 skill 汇总行：`29 skills`。计数单位是纯展示文本。
-		{ name: "slash skill count", find: 'description:`${i} skill${i===1?"":"s"}`', replace: `description:${FN_FRAG}(\`\${i} skill\${i===1?"":"s"}\`)` },
+		// 技能计数：中文不需要复数，直接把单位内联，避免片段替换把
+		// "skills.omp.sh" 这类标识符里的 skills 也换掉。
+		{ name: "slash skill count", find: 'description:`${i} skill${i===1?"":"s"}`', replace: `description:\`\${i} 个技能\`` },
+		// 设置项 description 是带插值的模板串时，静态扫描收不到（只收无插值的），
+		// 需单独包片段翻译。上游这类目前只有两条。
+		{ name: "setting desc: magic keywords", find: "description:`Enable hidden notices for standalone ${eM.map((e)=>e.word).join(\", \")} keywords`", replace: `description:${FN_FRAG}(\`Enable hidden notices for standalone \${eM.map((e)=>e.word).join(", ")} keywords\`)` },
+		{ name: "setting desc: search timeout", find: "description:`Hard timeout for each provider's search transport before web_search advances to the next fallback, in seconds (maximum ${Ett})`", replace: `description:${FN_FRAG}(\`Hard timeout for each provider's search transport before web_search advances to the next fallback, in seconds (maximum \${Ett})\`)` },
+		// /model、/switch 补全项的描述前缀：`Model: <provider>/<id>`。
+		// all:true 因为两个命令共用同一段内联函数。
+		{ name: "slash model desc prefix", find: 'return t?`Model: ${t.provider}/${t.id}`:"Model: none selected"', replace: `return t?${FN_FRAG}(\`Model: \${t.provider}/\${t.id}\`):${FN_FRAG}("Model: none selected")`, all: true },
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
 		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
