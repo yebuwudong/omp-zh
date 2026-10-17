@@ -985,6 +985,28 @@ const SPLIT_SAFE_ROLES: Record<string, true> = {
  * languages.
  */
 const SPLIT_UI_STRINGS: Record<string, true> = {
+	// Settings section headers inside a tab (`ui:{tab:"x",group:"General"}`).
+	// The same word also appears in TAB_GROUPS (an ordering array compared with
+	// indexOf), so the conservative rule skips the whole key; only the
+	// rendered occurrence may be translated, the array element stays English.
+	General: true,
+	Input: true,
+	Bash: true,
+	Speech: true,
+	Stream: true,
+	Compaction: true,
+	"Rules (TTSR)": true,
+	Experimental: true,
+	"Startup & Updates": true,
+	Power: true,
+	Agent: true,
+	Git: true,
+	Skills: true,
+	Memory: true,
+	"Auto-Learn": true,
+	Mnemopi: true,
+	Hindsight: true,
+	SharpShooter: true,
 	// settings tabs (tab bar labels; also present as category-map returns,
 	// shellcheck language ids and statusline constants — all kept English)
 	Model: true,
