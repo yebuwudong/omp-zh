@@ -985,6 +985,11 @@ const SPLIT_SAFE_ROLES: Record<string, true> = {
  * languages.
  */
 const SPLIT_UI_STRINGS: Record<string, true> = {
+	// Model picker tabs and kind filter: both render as labels, but the same
+	// words also appear in `kind==="all"` comparisons and conditional returns.
+	"All models": true,
+	Kind: true,
+	Chat: true,
 	// Settings section headers inside a tab (`ui:{tab:"x",group:"General"}`).
 	// The same word also appears in TAB_GROUPS (an ordering array compared with
 	// indexOf), so the conservative rule skips the whole key; only the
@@ -1329,6 +1334,12 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		{ name: "preview label (strong)", find: 'previewLabel:r?e.previewLabel??"Preview:":void 0', replace: `previewLabel:r?e.previewLabel??${FN}("Preview:"):void 0` },
 		{ name: "preview label (muted col)", find: 'le([O("Preview:","muted")])', replace: `le([O(${FN}("Preview:"),"muted")])`, all: true },
 		{ name: "preview label (fg)", find: 'E.fg("muted","Preview:")', replace: `E.fg("muted",${FN}("Preview:"))`, all: true },
+		// 模型/角色选择器的页脚由 aCl() 独立拼好（四个 switch 分支各自 return 模板），
+		// 不经 renderFooter。在调用点包片段翻译，四个分支一并覆盖。
+		{ name: "model picker footer", find: 'a=aCl(this.#p?"task":this.#d?"role":i?"selection":"session")', replace: `a=${FN_FRAG}(aCl(this.#p?"task":this.#d?"role":i?"selection":"session"))` },
+		{ name: "model picker footer suffix", find: 'a+=` \\xB7 ${Be(this.#m)} ${this.#p?"session model":"task model"}`', replace: `a+=${FN_FRAG}(\` \xB7 \${Be(this.#m)} \${this.#p?"session model":"task model"}\`)` },
+		// 双击 Esc 的 getter 描述：带插值的模板，静态扫描收不到。
+		{ name: "setting desc: double escape", find: 'get description(){return`What pressing ${Be("escape")} twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing`}', replace: `get description(){return ${FN_FRAG}(\`What pressing \${Be("escape")} twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing\`) }` },
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
 		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
