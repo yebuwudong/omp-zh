@@ -209,6 +209,92 @@ const nativeBinaryPath = (version: string): string =>
 	path.join(SIDECAR_ROOT, version, "omp-zh-native");
 
 /**
+ * Remove sidecar directories for versions other than the ones still in use.
+ *
+ * Each sidecar is a full npm dependency tree: ~400 MB, or ~1 GB when the
+ * precompiled binary lives beside it. Upstream ships a release every few days,
+ * and `apply` materialises a new sidecar each time, so without pruning the
+ * directory grows without bound (2.3 GB across four versions in the first two
+ * days of this feature). Only the sidecars the launcher can actually select are
+ * worth keeping:
+ *
+ *   - the version matching the installed omp (what the launcher prefers), and
+ *   - the newest patched sidecar (the launcher's fallback when the installed
+ *     version has not been patched yet — i.e. right after an upgrade).
+ *
+ * Anything older can never be launched, so it is deleted. `OMP_ZH_KEEP_SIDECARS`
+ * pins extra versions (comma-separated) for bisecting a regression.
+ */
+const pruneSidecars = async (keepVersion: string | undefined): Promise<void> => {
+	if (!existsSync(SIDECAR_ROOT)) return;
+	const pinned = (process.env.OMP_ZH_KEEP_SIDECARS ?? "")
+		.split(",").map(v => v.trim()).filter(Boolean);
+
+	let installed: string | undefined;
+	try {
+		const which = Bun.which("omp");
+		if (which) installed = probeVersion(which);
+	} catch { /* keep undefined */ }
+
+	const entries = await fs.readdir(SIDECAR_ROOT).catch(() => [] as string[]);
+	const versions = entries.filter(name => /^\d+\.\d+\.\d+$/.test(name));
+
+	// The newest patched sidecar is the launcher's fallback after an upgrade.
+	let newestPatched: string | undefined;
+	for (const v of versions) {
+		const cli = sidecarCliPath(v);
+		if (!existsSync(cli)) continue;
+		const head = await Bun.file(cli).slice(0, 4_000_000).text().catch(() => "");
+		if (!head.includes(`var ${DICT_VAR}=`)) continue;
+		if (!newestPatched || newerVersion(v, newestPatched)) newestPatched = v;
+	}
+
+	const keep = new Set<string>(pinned);
+	for (const v of [keepVersion, installed, newestPatched]) if (v) keep.add(v);
+
+	let freed = 0;
+	for (const v of versions) {
+		if (keep.has(v)) continue;
+		const dir = path.join(SIDECAR_ROOT, v);
+		const size = await dirSize(dir);
+		await fs.rm(dir, { recursive: true, force: true });
+		freed += size;
+		console.error(`已清理旧侧载 ${v}（${(size / 1e6).toFixed(0)} MB）`);
+	}
+	if (freed > 0) {
+		console.error(`共释放 ${(freed / 1e6).toFixed(0)} MB；保留 ${[...keep].filter(v => versions.includes(v)).join("、")}`);
+	}
+};
+
+/** Recursive byte size, for reporting what a prune reclaimed. */
+const dirSize = async (dir: string): Promise<number> => {
+	let total = 0;
+	const walk = async (d: string): Promise<void> => {
+		const entries = await fs.readdir(d, { withFileTypes: true }).catch(() => []);
+		for (const e of entries) {
+			const full = path.join(d, e.name);
+			if (e.isDirectory()) await walk(full);
+			else {
+				const st = await fs.stat(full).catch(() => null);
+				if (st) total += st.size;
+			}
+		}
+	};
+	await walk(dir);
+	return total;
+};
+
+/** Compare dotted versions; true when a > b. */
+const newerVersion = (a: string, b: string): boolean => {
+	const pa = a.split(".").map(Number);
+	const pb = b.split(".").map(Number);
+	for (let i = 0; i < 3; i++) {
+		if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+	}
+	return false;
+};
+
+/**
  * Precompile the patched sidecar into a standalone binary that carries Bun's
  * bytecode cache.
  *
@@ -1339,6 +1425,8 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		{ name: "model picker footer", find: 'a=aCl(this.#p?"task":this.#d?"role":i?"selection":"session")', replace: `a=${FN_FRAG}(aCl(this.#p?"task":this.#d?"role":i?"selection":"session"))` },
 		{ name: "model picker footer suffix", find: 'a+=` \\xB7 ${Be(this.#m)} ${this.#p?"session model":"task model"}`', replace: `a+=${FN_FRAG}(\` \xB7 \${Be(this.#m)} \${this.#p?"session model":"task model"}\`)` },
 		// 双击 Esc 的 getter 描述：带插值的模板，静态扫描收不到。
+		// 鼠标点击聚焦：getter 里用局部变量 ${e} 拼 Shift，静态扫描收不到。
+		{ name: "setting desc: mouse click focus", find: 'get description(){let e=Be("shift");return`Capture mouse clicks in the main session so live subagent cards and HUD rows focus on click, with a hover highlight on the target. Native text selection becomes ${e}+drag and wheel scroll becomes ${e}+wheel while on`}', replace: `get description(){let e=Be("shift");return ${FN_FRAG}(\`Capture mouse clicks in the main session so live subagent cards and HUD rows focus on click, with a hover highlight on the target. Native text selection becomes \${e}+drag and wheel scroll becomes \${e}+wheel while on\`) }` },
 		{ name: "setting desc: double escape", find: 'get description(){return`What pressing ${Be("escape")} twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing`}', replace: `get description(){return ${FN_FRAG}(\`What pressing \${Be("escape")} twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing\`) }` },
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
@@ -2324,6 +2412,10 @@ const apply = async (): Promise<void> => {
 		const stale = nativeBinaryPath(TARGET.version);
 		if (existsSync(stale)) await fs.rm(stale, { force: true });
 		await compileNative(CLI_PATH, TARGET.version);
+		// Old sidecars are several hundred MB each and can never be selected
+		// once a newer one exists; reclaim them at the end of a successful
+		// apply so the directory does not grow with every upstream release.
+		await pruneSidecars(TARGET.version);
 	}
 };
 
