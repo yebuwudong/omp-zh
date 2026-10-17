@@ -1325,6 +1325,10 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// /model、/switch 补全项的描述前缀：`Model: <provider>/<id>`。
 		// all:true 因为两个命令共用同一段内联函数。
 		{ name: "slash model desc prefix", find: 'return t?`Model: ${t.provider}/${t.id}`:"Model: none selected"', replace: `return t?${FN_FRAG}(\`Model: \${t.provider}/\${t.id}\`):${FN_FRAG}("Model: none selected")`, all: true },
+		// 设置面板外观页的预览区标题（多处独立字面量）。
+		{ name: "preview label (strong)", find: 'previewLabel:r?e.previewLabel??"Preview:":void 0', replace: `previewLabel:r?e.previewLabel??${FN}("Preview:"):void 0` },
+		{ name: "preview label (muted col)", find: 'le([O("Preview:","muted")])', replace: `le([O(${FN}("Preview:"),"muted")])`, all: true },
+		{ name: "preview label (fg)", find: 'E.fg("muted","Preview:")', replace: `E.fg("muted",${FN}("Preview:"))`, all: true },
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
 		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
