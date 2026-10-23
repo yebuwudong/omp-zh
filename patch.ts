@@ -1408,6 +1408,9 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 需单独包片段翻译。上游这类目前只有两条。
 		// /model、/switch 补全项的描述前缀：`Model: <provider>/<id>`。
 		// all:true 因为两个命令共用同一段内联函数。
+		// "/" 补全列表的 skill 汇总行：`29 skills`。中文不需要复数，直接内联单位，
+		// 避免片段替换把 "skills.omp.sh" 这类标识符里的 skills 也换掉。
+		{ name: "slash skill count", find: 'description:`${i} skill${i===1?"":"s"}`', replace: `description:\`\${i} 个技能\`` },
 		{ name: "slash model desc prefix", find: 'return t?`Model: ${t.provider}/${t.id}`:"Model: none selected"', replace: `return t?${FN_FRAG}(\`Model: \${t.provider}/\${t.id}\`):${FN_FRAG}("Model: none selected")`, all: true },
 		// 设置面板外观页的预览区标题（多处独立字面量）。
 		// 模型/角色选择器的页脚由 aCl() 独立拼好（四个 switch 分支各自 return 模板），
@@ -1417,69 +1420,6 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 设置项描述里的模板串（含运行时插值）：静态扫描只收无插值模板，
 		// 这类必须靠锚点包片段翻译。
 		// 设置项描述中的模板串（含运行时插值）：静态扫描收不到，必须锚点包片段翻译。
-		{ name: "tpl desc: comma-separated-model-patterns", find: '`Comma-separated model patterns for ${Be("ctrl+p")} cycling`', replace: `${FN_FRAG}(\`Comma-separated model patterns for \${Be("ctrl+p")} cycling\`)` },
-		{ name: "tpl desc: set-thinking-level----i8-join", find: '`Set thinking level: ${I8.join(", ")}`', replace: `${FN_FRAG}(\`Set thinking level: \${I8.join(", ")}\`)` },
-		{ name: "tpl desc: zai---h-label--token-quota", find: '`ZAI ${h.label} Token Quota`', replace: `${FN_FRAG}(\`ZAI \${h.label} Token Quota\`)` },
-		{ name: "tpl desc: zai---m-label--credit-quota", find: '`ZAI ${m.label} Credit Quota`', replace: `${FN_FRAG}(\`ZAI \${m.label} Credit Quota\`)` },
-		{ name: "tpl desc: back-to-the-main-session----r", find: '`Back to the main session  ${r}`', replace: `${FN_FRAG}(\`Back to the main session  \${r}\`)` },
-		{ name: "tpl desc: viewing-subagent---n---what-you", find: '`Viewing subagent ${n}: what you send goes to it`', replace: `${FN_FRAG}(\`Viewing subagent \${n}: what you send goes to it\`)` },
-		{ name: "tpl desc: thinking-effort----l---c", find: '`Thinking effort: ${l}${c}`', replace: `${FN_FRAG}(\`Thinking effort: \${l}\${c}\`)` },
-		{ name: "tpl desc: context---de-this--m--tolowerca", find: '`Context ${De(this.#m).toLowerCase()} exceeds this model\'s limit; picking it compacts first`', replace: `${FN_FRAG}(\`Context \${De(this.#m).toLowerCase()} exceeds this model's limit; picking it compacts first\`)` },
-		{ name: "tpl desc: catch-up-policy--inherit-follow", find: '`Catch-up policy; inherit follows advisor.syncBacklog (currently ${this.#t.syncBacklog??"off"}).`', replace: `${FN_FRAG}(\`Catch-up policy; inherit follows advisor.syncBacklog (currently \${this.#t.syncBacklog??"off"}).\`)` },
-		{ name: "tpl desc: watchdog-yml--xb7---this--s", find: '`WATCHDOG.yml \\xB7 ${this.#s}`', replace: `${FN_FRAG}(\`WATCHDOG.yml \\xB7 \${this.#s}\`)` },
-		{ name: "tpl desc: editing-the---this--s--file--sw", find: '`Editing the ${this.#s} file. Switch to the ${this.#K()} file.`', replace: `${FN_FRAG}(\`Editing the \${this.#s} file. Switch to the \${this.#K()} file.\`)` },
-		{ name: "tpl desc: i--reviews-with-this-model--u", find: '`${i} reviews with this model. Unset, it uses ${o}.`', replace: `${FN_FRAG}(\`\${i} reviews with this model. Unset, it uses \${o}.\`)` },
-		{ name: "tpl desc: how-hard---this--a-advisors-e", find: '`How hard ${this.#a.advisors[e]?.name||"the advisor"} reasons on ${t}.`', replace: `${FN_FRAG}(\`How hard \${this.#a.advisors[e]?.name||"the advisor"} reasons on \${t}.\`)` },
-		{ name: "tpl desc: when---t-name---the-advisor---r", find: '`When ${t.name||"the advisor"} reviews the session.`', replace: `${FN_FRAG}(\`When \${t.name||"the advisor"} reviews the session.\`)` },
-		{ name: "tpl desc: follow-the-global-advisor-syncb", find: '`Follow the global advisor.syncBacklog setting (currently "${n}").`', replace: `${FN_FRAG}(\`Follow the global advisor.syncBacklog setting (currently "\${n}").\`)` },
-		{ name: "tpl desc: how-long-the-session-waits-for", find: '`How long the session waits for ${t.name||"the advisor"}\'s pending reviews.`', replace: `${FN_FRAG}(\`How long the session waits for \${t.name||"the advisor"}'s pending reviews.\`)` },
-		{ name: "tpl desc: what---this--a-advisors-e---nam", find: '`What ${this.#a.advisors[e]?.name||"the advisor"} may call. None grants no tools; read, grep and glob are the default.`', replace: `${FN_FRAG}(\`What \${this.#a.advisors[e]?.name||"the advisor"} may call. None grants no tools; read, grep and glob are the default.\`)` },
-		{ name: "tpl desc: hard-timeout-for-each-provider", find: '`Hard timeout for each provider\'s search transport before web_search advances to the next fallback, in seconds (maximum ${fnt})`', replace: `${FN_FRAG}(\`Hard timeout for each provider's search transport before web_search advances to the next fallback, in seconds (maximum \${fnt})\`)` },
-		{ name: "tpl desc: l-crash--crashed--xb7---l-che", find: '`${l.crash} crashed \\xB7 ${l.checks_failed} checks failed`', replace: `${FN_FRAG}(\`\${l.crash} crashed \\xB7 \${l.checks_failed} checks failed\`)` },
-		{ name: "tpl desc: open---jkl-e---in-your-browser", find: '`Open ${Jkl(e)} in your browser`', replace: `${FN_FRAG}(\`Open \${Jkl(e)} in your browser\`)` },
-		{ name: "tpl desc: stop---u-1--of-the-quick-switch", find: '`Stop ${u+1} of the quick-switch cycle`', replace: `${FN_FRAG}(\`Stop \${u+1} of the quick-switch cycle\`)` },
-		{ name: "tpl desc: backgrounded-as-job---r-async-j", find: '`Backgrounded as job ${r.async.jobId}`', replace: `${FN_FRAG}(\`Backgrounded as job \${r.async.jobId}\`)` },
-		{ name: "tpl desc: wt--tui-select-confirm----to", find: '`${wt("tui.select.confirm")} to select \\xB7 ${wt("tui.select.cancel")} to cancel`', replace: `${FN_FRAG}(\`\${wt("tui.select.confirm")} to select \\xB7 \${wt("tui.select.cancel")} to cancel\`)` },
-		{ name: "tpl desc: wt--tui-input-submit----to-sa", find: '`${wt("tui.input.submit")} to save \\xB7 ${wt("tui.select.cancel")} to cancel`', replace: `${FN_FRAG}(\`\${wt("tui.input.submit")} to save \\xB7 \${wt("tui.select.cancel")} to cancel\`)` },
-		{ name: "tpl desc: wt--tui-select-confirm----to", find: '`${wt("tui.select.confirm")} to edit \\xB7 ${wt("tui.select.cancel")} to go back`', replace: `${FN_FRAG}(\`\${wt("tui.select.confirm")} to edit \\xB7 \${wt("tui.select.cancel")} to go back\`)` , all: true },
-		{ name: "tpl desc: wt--tui-input-submit----to", find: '`  ${wt("tui.input.submit")} to save \\xB7 ${wt("tui.select.cancel")} to cancel \\xB7 Clear field to unset`', replace: `${FN_FRAG}(\`  \${wt("tui.input.submit")} to save \\xB7 \${wt("tui.select.cancel")} to cancel \\xB7 Clear field to unset\`)` , all: true },
-		{ name: "tpl desc: wt--tui-select-confirm----t", find: '`  ${wt("tui.select.confirm")} to select \\xB7 ${wt("tui.select.cancel")} to go back`', replace: `${FN_FRAG}(\`  \${wt("tui.select.confirm")} to select \\xB7 \${wt("tui.select.cancel")} to go back\`)` },
-		{ name: "tpl desc: wt--tui-select-confirm----t", find: '`  ${wt("tui.select.confirm")} to edit provider \\xB7 ${wt("tui.select.cancel")} to go back`', replace: `${FN_FRAG}(\`  \${wt("tui.select.confirm")} to edit provider \\xB7 \${wt("tui.select.cancel")} to go back\`)` },
-		{ name: "tpl desc: max-in-flight-requests----e", find: '`Max In-Flight Requests: ${e}`', replace: `${FN_FRAG}(\`Max In-Flight Requests: \${e}\`)` },
-		{ name: "tpl desc: r-label---xb7---de-r-tokens", find: '`${r.label} \\xB7 ${De(r.tokens)} tokens (${cM(r.tokens,t)})`', replace: `${FN_FRAG}(\`\${r.label} \\xB7 \${De(r.tokens)} tokens (\${cM(r.tokens,t)})\`)` },
-		{ name: "tpl desc: free-space--xb7---de-e-freetoke", find: '`Free space \\xB7 ${De(e.freeTokens)} tokens (${cM(e.freeTokens,t)})`', replace: `${FN_FRAG}(\`Free space \\xB7 \${De(e.freeTokens)} tokens (\${cM(e.freeTokens,t)})\`)` },
-		{ name: "tpl desc: autocompact-buffer--xb7---de-e", find: '`Autocompact buffer \\xB7 ${De(e.autoCompactBufferTokens)} tokens (${cM(e.autoCompactBufferTokens,t)})`', replace: `${FN_FRAG}(\`Autocompact buffer \\xB7 \${De(e.autoCompactBufferTokens)} tokens (\${cM(e.autoCompactBufferTokens,t)})\`)` },
-		{ name: "tpl desc: auto-compaction-at---cm-o-t-0", find: '`Auto-compaction at ${cM(o,t,0)} \\xB7 ${De(o)} tokens`', replace: `${FN_FRAG}(\`Auto-compaction at \${cM(o,t,0)} \\xB7 \${De(o)} tokens\`)` },
-		{ name: "tpl desc: compaction-summary-starts-at", find: '`Compaction summary starts at ${Math.round(y*100)}%`', replace: `${FN_FRAG}(\`Compaction summary starts at \${Math.round(y*100)}%\`)` },
-		{ name: "tpl desc: auto-compact-at---math-round-f", find: '`Auto-compact at ${Math.round(f.thresholdPercent)}%`', replace: `${FN_FRAG}(\`Auto-compact at \${Math.round(f.thresholdPercent)}%\`)` , all: true },
-		{ name: "tpl desc: enable-hidden-notices-for-stand", find: '`Enable hidden notices for standalone ${hM.map((e)=>e.word).join(", ")} keywords`', replace: `${FN_FRAG}(\`Enable hidden notices for standalone \${hM.map((e)=>e.word).join(", ")} keywords\`)` },
-		{ name: "tpl desc: mnemopi-embed-server-for---e", find: '`mnemopi embed server for ${e}`', replace: `${FN_FRAG}(\`mnemopi embed server for \${e}\`)` },
-		{ name: "tpl desc: tiny-onnx-worker-for---e", find: '`tiny onnx worker for ${e}`', replace: `${FN_FRAG}(\`tiny onnx worker for \${e}\`)` },
-		{ name: "tpl desc: tiny-mlx-worker-for---e", find: '`tiny mlx worker for ${e}`', replace: `${FN_FRAG}(\`tiny mlx worker for \${e}\`)` },
-		{ name: "tpl desc: project-environment-at---n", find: '`project environment at ${n}`', replace: `${FN_FRAG}(\`project environment at \${n}\`)` },
-		{ name: "tpl desc: omp-managed-environment-at---i", find: '`OMP-managed environment at ${i}`', replace: `${FN_FRAG}(\`OMP-managed environment at \${i}\`)` },
-		{ name: "tpl desc: cloud-source-evidence---a-1", find: '`Cloud source evidence ${a+1}`', replace: `${FN_FRAG}(\`Cloud source evidence \${a+1}\`)` },
-		{ name: "tpl desc: resume----xs-e----xb7-----xs--e", find: '`Resume  ${xs(e)} \\xB7   ${xs("enter")} \\xB7   ${xs("space")}`', replace: `${FN_FRAG}(\`Resume  \${xs(e)} \\xB7   \${xs("enter")} \\xB7   \${xs("space")}\`)` },
-		{ name: "tpl desc: redeem-now-and-remember-yes-for", find: '`Redeem now and remember yes for future eligible ${r} resets.`', replace: `${FN_FRAG}(\`Redeem now and remember yes for future eligible \${r} resets.\`)` },
-		{ name: "tpl desc: do-not-auto-redeem-saved---r--r", find: '`Do not auto-redeem saved ${r} resets.`', replace: `${FN_FRAG}(\`Do not auto-redeem saved \${r} resets.\`)` },
-		{ name: "tpl desc: run-all---e-length--discovered", find: '`Run all ${e.length} discovered checker${e.length===1?"":"s"}`', replace: `${FN_FRAG}(\`Run all \${e.length} discovered checker\${e.length===1?"":"s"}\`)` , all: true },
-		{ name: "tpl desc: this--o--of---this--i--repair", find: '`${this.#o} of ${this.#i} repair lanes finished`', replace: `${FN_FRAG}(\`\${this.#o} of \${this.#i} repair lanes finished\`)` },
-		{ name: "tpl desc: advisor-status----e-advisors-le", find: '`Advisor Status (${e.advisors.length} advisors)`', replace: `${FN_FRAG}(\`Advisor Status (\${e.advisors.length} advisors)\`)` },
-		{ name: "tpl desc: retrying--xb7-attempt---e-attem", find: '`Retrying \\xB7 attempt ${e.attempt} of ${e.maxAttempts}`', replace: `${FN_FRAG}(\`Retrying \\xB7 attempt \${e.attempt} of \${e.maxAttempts}\`)` },
-		{ name: "tpl desc: approve-this-call--n------xs-n", find: '`Approve this call${n?`  ${xs(n)}`:""}`', replace: `${FN_FRAG}(\`Approve this call\${n?\`  \${xs(n)}\`:""}\`)` },
-		{ name: "tpl desc: show-the-question--i------xs-i", find: '`Show the question${i?`  ${xs(i)}`:""}`', replace: `${FN_FRAG}(\`Show the question\${i?\`  \${xs(i)}\`:""}\`)` },
-		{ name: "tpl desc: skip-without-answering--n", find: '`Skip without answering${n?`  ${xs(n)}`:""}`', replace: `${FN_FRAG}(\`Skip without answering\${n?\`  \${xs(n)}\`:""}\`)` },
-		{ name: "tpl desc: hide-until-you-are-ready-to-ans", find: '`Hide until you are ready to answer${i?`  ${xs(i)}`:""}`', replace: `${FN_FRAG}(\`Hide until you are ready to answer\${i?\`  \${xs(i)}\`:""}\`)` },
-		{ name: "tpl desc: i--messages-queued", find: '`${i} messages queued`', replace: `${FN_FRAG}(\`\${i} messages queued\`)` },
-		{ name: "tpl desc: wt--tui-select-cancel----to-p", find: '`${wt("tui.select.cancel")} to paste inline`', replace: `${FN_FRAG}(\`\${wt("tui.select.cancel")} to paste inline\`)` },
-		{ name: "tpl desc: r---role-aliases-like--smol-a", find: '`${r} (role aliases like @smol and :level suffixes work; empty clears)`', replace: `${FN_FRAG}(\`\${r} (role aliases like @smol and :level suffixes work; empty clears)\`)` },
-		{ name: "tpl desc: resets---e-e-n-----n-getfullyea", find: '`Resets ${e$e(n)} ${n.getFullYear()}, ${dAr(n)} (in ${gt(t)})`', replace: `${FN_FRAG}(\`Resets \${e$e(n)} \${n.getFullYear()}, \${dAr(n)} (in \${gt(t)})\`)` },
-		{ name: "tpl desc: daybreak-access--xb7---s", find: '`Daybreak access \\xB7 ${s}`', replace: `${FN_FRAG}(\`Daybreak access \\xB7 \${s}\`)` },
-		{ name: "tpl desc: to-see---e-runningagents--runni", find: '`to see ${e.runningAgents} running ${e.runningAgents===1?"agent":"agents"}`', replace: `${FN_FRAG}(\`to see \${e.runningAgents} running \${e.runningAgents===1?"agent":"agents"}\`)` },
-		{ name: "tpl desc: ast-edit----b-totalreplacements", find: '`AST Edit: ${b.totalReplacements} replacement${F} in ${b.filesTouched} file${G}`', replace: `${FN_FRAG}(\`AST Edit: \${b.totalReplacements} replacement\${F} in \${b.filesTouched} file\${G}\`)` },
-		{ name: "tpl desc: review-pr---a-repo----a-number", find: '`Review PR ${a.repo}#${a.number} from conversation`', replace: `${FN_FRAG}(\`Review PR \${a.repo}#\${a.number} from conversation\`)` },
-		{ name: "tpl desc: pending-mcp-tool----o", find: '`Pending MCP tool. ${o}`', replace: `${FN_FRAG}(\`Pending MCP tool. \${o}\`)` },
-		{ name: "tpl desc: action----efn-join----------def", find: '`Action: ${efn.join(" | ")} (default serve)`', replace: `${FN_FRAG}(\`Action: \${efn.join(" | ")} (default serve)\`)` },
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
 		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
@@ -1487,7 +1427,7 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 渲染出口。label 是运行时变量，不能走 FN（verify 断言字面量实参），
 		// 也不能走 FN_FRAG（子串替换会污染含同词的英文句子，实测误伤 3000+）。
 		// 直接对运行时词典做 hasOwn 精确查表：命中即用译文，未命中回退原文。
-		{ name: "keybinding hints", find: 'i.push(le([O(r.label,"muted")]))', replace: `i.push(le([O(Object.hasOwn(__omp_i18n_d,r.label)?__omp_i18n_d[r.label]:r.label,"muted")]))` },
+		{ name: "keybinding hints", find: 'i.push(le([O(r.label,"muted")]))', replace: `i.push(le([O(Object.hasOwn(__omp_i18n_d,r.label)?__omp_i18n_d[r.label]:r.label,"muted")]))`, all: true },
 		{ name: "model panel title (provider)", find: 'r=`${t.label} \\xB7 ${t.annotation??"0"} models${n}`;', replace: `r=${FN_FRAG}(\`\${t.label} \\xB7 \${t.annotation??"0"} models\${n}\`);` },
 { name: "status sink", find: "showStatus(e,t){let s=this.ctx.chatContainer.children", replace: `showStatus(e,t){e=${FN_FRAG}(e);let s=this.ctx.chatContainer.children`,
 		  // v18.9: 局部变量 s→n 后首选精确失配，而短锚点的通配兜底会命中 320 个方法（不唯一）。
