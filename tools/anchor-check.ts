@@ -10,6 +10,7 @@
  * 用法：bun tools/anchor-check.ts [cli.js 路径]
  */
 import * as fs from "node:fs";
+import { parse } from "@babel/parser";
 import { matchLoose } from "./loose-anchor";
 
 interface Spelling { find: string; replace: string }
@@ -17,32 +18,25 @@ interface AnchorPatch { name: string; find: string; replace: string; all?: true;
 
 const patchSrc = fs.readFileSync(new URL("../patch.ts", import.meta.url), "utf8");
 
-/** 从 patch.ts 源码里截取 ANCHOR_PATCHES 数组字面量文本。 */
+/**
+ * 从 patch.ts 源码里截取 ANCHOR_PATCHES 数组字面量文本。
+ *
+ * 早期版本是手写的括号配平扫描（字符串/反引号感知），但 patch.ts 里锚点
+ * 条目的注释也含有反引号和括号，遇到 `[` 就跟着配平会把数组截断，报
+ * 「unbalanced ANCHOR_PATCHES array」。改成用 babel 直接取 AST 里
+ * `ANCHOR_PATCHES` 初始化器 的源码切片——注释与正则都不再是问题。
+ */
 const extractArray = (src: string): string => {
-	const marker = "const ANCHOR_PATCHES: readonly AnchorPatch[] = ";
-	const start = src.indexOf(marker);
-	if (start === -1) throw new Error("ANCHOR_PATCHES marker not found");
-	const open = src.indexOf("[", start + marker.length);
-	// 与 loose-anchor 的 matchingBrace 同逻辑：字符串/反引号感知的括号配平
-	let depth = 0;
-	for (let i = open; i < src.length; i++) {
-		const c = src[i];
-		if (c === '"' || c === "'" || c === "`") {
-			const quote = c;
-			i++;
-			for (; i < src.length; i++) {
-				if (src[i] === "\\") { i++; continue; }
-				if (src[i] === quote) break;
+	const ast = parse(src, { sourceType: "module", plugins: ["typescript"], errorRecovery: true });
+	for (const node of ast.program.body) {
+		if (node.type !== "VariableDeclaration") continue;
+		for (const decl of node.declarations) {
+			if (decl.id.type === "Identifier" && decl.id.name === "ANCHOR_PATCHES" && decl.init) {
+				return src.slice(decl.init.start!, decl.init.end!);
 			}
-			continue;
-		}
-		if (c === "[") depth++;
-		else if (c === "]") {
-			depth--;
-			if (depth === 0) return src.slice(open, i + 1);
 		}
 	}
-	throw new Error("unbalanced ANCHOR_PATCHES array");
+	throw new Error("ANCHOR_PATCHES not found in patch.ts");
 };
 
 // patch.ts 无 import.meta.main 守卫，直接 import 会执行入口命令；

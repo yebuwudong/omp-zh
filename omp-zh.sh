@@ -53,6 +53,7 @@ apply)
 	chmod +x "$CLI"
 	run_patch verify
 	bun tools/test-value-labels.ts
+	bun tools/test-anchors.ts
 	echo
 	# A binary install keeps the official `omp` untouched and puts the Chinese
 	# UI behind `omp-zh`; running plain `omp` then looks like a failed patch.
@@ -72,8 +73,11 @@ test)
 	echo
 	bun tools/test-value-labels.ts
 	echo
+	bun tools/test-anchors.ts
+	echo
 	echo "--- OMP_ZH=0 回退检查 ---"
 	OMP_ZH=0 bun tools/test-value-labels.ts
+	OMP_ZH=0 bun tools/test-anchors.ts
 	;;
 restore)
 	run_patch restore

@@ -24,6 +24,7 @@
     ├── loose-anchor.ts           锚点通配匹配（重打包重命名自动适配）
     ├── patch-templates.ts        模板字面量包裹（拼接式提示）
     ├── anchor-check.ts           全量锚点体检（一次列出所有失配 + 产物真实上下文）
+    ├── test-anchors.ts           锚点运行时断言（不驱动 TUI，秒级完成）
     └── scan-multiline-strings.ts 多行字符串语料扫描（欢迎页提示等整块文本）
 
 备份位于 <omp>/dist/.omp-zh-backup/（跟着安装走，多份 clone 共享）
@@ -403,6 +404,32 @@ if (k === __omp_i18n_t("__proto__") || ...) continue;  // 恒为 false，防护�
 `verify` 断言这两类键永不出现在调用点。
 
 ## 更新日志
+
+### 适配 omp 18.18.1：首启页与错误/警告提示恢复中文
+
+上游 18.18 重构了首次设置页和错误/警告的渲染出口，4 个锚点在产物里**完全消失**
+（不是改名，是结构变了，通配兜底也救不回来），`apply` 直接报
+`anchor missing: setup scene heading` 而未打补丁——表现就是「最新版汉化失败」。
+
+| 锚点 | 18.18.1 新形态 | 处理 |
+|---|---|---|
+| setup scene heading | 标题/副标题改为两条条件 `ht(se([…]))` push | 补 `alts` |
+| setup progress | 进度行改由渲染器 `#v(e,t)` 用局部变量拼接 | 补 `alts` |
+| error sink | 不再自建 `re(…)`，统一走 `ure.line("error",e)` | 补 `alts` |
+| warning sink | 同上（第二参数变为 options） | 补 `alts` |
+
+同时有两处工具链修复：
+
+- `tools/anchor-check.ts` 原来手写括号配平从源码里截 `ANCHOR_PATCHES`，遇到锚点条目
+  注释里的反引号就会截断，报 `unbalanced ANCHOR_PATCHES array`。改用 babel 取 AST
+  初始化器切片，74 个锚点体检恢复可用。
+- 新增 `tools/test-anchors.ts`：把补丁后的运行时序言抽出来在进程内驱动，断言
+  「锚点命中的那几处文本确实变中文了」以及 `OMP_ZH=0` 回退。它不驱动 TUI，
+  所以不会像 `tools/settings-walk.ts` 那样卡在等 pty 帧。已接进 `apply` / `test` 流程。
+
+另：omp 18.18 要求 **Bun ≥ 1.4.4**。侧载的预编译二进制由本机 bun 编出，用旧 bun
+编译的二进制启动时会报 `Bun runtime must be >= 1.4.4`，升级 bun 后需重跑
+`bun patch.ts native` 重编。
 
 ### TUI 面板残留英文系统性覆盖
 

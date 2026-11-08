@@ -1296,9 +1296,17 @@ interface AnchorPatch {
 
 const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	// First-run setup uses its own renderer rather than the standard TUI text helpers.
-	{ name: "setup scene heading", find: 'o=[le([O(n,"strong")])];if(r)o.push(le([O(r,"muted")]));', replace: `o=[le([O(${FN_FRAG}(n),"strong")])];if(r)o.push(le([O(${FN_FRAG}(r),"muted")]));` },
+	{ name: "setup scene heading", find: 'o=[le([O(n,"strong")])];if(r)o.push(le([O(r,"muted")]));', replace: `o=[le([O(${FN_FRAG}(n),"strong")])];if(r)o.push(le([O(${FN_FRAG}(r),"muted")]));`,
+	  // v18.18: 首启页头从「数组字面量」改为两条条件 push（title/subtitle），并
+	  // 改走 `ht(se([...]))` 的块包装。旧拼写在 18.18 产物里完全不存在，
+	  // 通配兜底也救不回来（标识符外的结构也变了），只能按新形态补 alt。
+	  alts: [{ find: 's.push(ht(se([O(r,"strong")],{role:"omp.setup.title"}),"title")),i)s.push(ht(se([O(i,"muted")],{role:"omp.setup.subtitle"}),"subtitle"))',
+	    replace: `s.push(ht(se([O(${FN_FRAG}(r),"strong")],{role:"omp.setup.title"}),"title")),i)s.push(ht(se([O(${FN_FRAG}(i),"muted")],{role:"omp.setup.subtitle"}),"subtitle"))` }] },
 	{ name: "setup sign-in subtitle", find: "`Sign in to one or more providers. Press ${wt(\"tui.select.cancel\")} when you're done.`", replace: ` ${FN}("Sign in to one or more providers. Press {{key}} when you're done.").replace("{{key}}",wt("tui.select.cancel"))` },
-	{ name: "setup progress", find: '`Setup step ${this.#n+1} of ${this.scenes.length}`', replace: ` ${FN}("Setup step {{current}} of {{total}}").replace("{{current}}",String(this.#n+1)).replace("{{total}}",String(this.scenes.length))`, all: true },
+	{ name: "setup progress", find: '`Setup step ${this.#n+1} of ${this.scenes.length}`', replace: ` ${FN}("Setup step {{current}} of {{total}}").replace("{{current}}",String(this.#n+1)).replace("{{total}}",String(this.scenes.length))`, all: true,
+	  // v18.18: 进度行改由渲染器 #v(e,t) 用局部变量拼接（私有字段不复存在）。
+	  alts: [{ find: '`Setup step ${s+1} of ${o.length}`',
+	    replace: ` ${FN}("Setup step {{current}} of {{total}}").replace("{{current}}",String(s+1)).replace("{{total}}",String(o.length))` }] },
 	{ name: "setup saved heading", find: '`${E.status.success} Setup saved`', replace: `${FN_FRAG}(\`\${E.status.success} Setup saved\`)`, all: true },
 	// Help epilogue: environment-variable / tool / plugin / useful-command
 	// reference block rendered by $3e (getExtraHelpText). Wrap the whole
@@ -1389,7 +1397,10 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		      replace: `${FN_FRAG}(\`1:agents  \${zt(["j","k"])}:select  \${we("enter")}:transcript  \${we("space")}:follow  \${we("f")}:filter  \${we("s")}:scope  /:search  \${we("escape")}:close\`)` },
 		  ] },
 		// showError root renderer: same sink approach as status/warning.
-		{ name: "error sink", find: "showError(e){let t=new re(`Error: ${e}`,1,0)", replace: `showError(e){e=${FN_FRAG}(e);let t=new re(\`Error: \${e}\`,1,0)` },
+		{ name: "error sink", find: "showError(e){let t=new re(`Error: ${e}`,1,0)", replace: `showError(e){e=${FN_FRAG}(e);let t=new re(\`Error: \${e}\`,1,0)`,
+		  // v18.18: 错误行不再自建 `re(...)`，统一走状态行渲染器 `ure.line("error",e)`。
+		  alts: [{ find: 'showError(e){this.ctx.present(ure.line("error",e))}',
+		    replace: `showError(e){this.ctx.present(ure.line("error",${FN_FRAG}(e)))}` }] },
 		// 会话录制状态行：纯渲染文本（`Recording to <path> · /record again to stop`）。
 		// 用 FN_FRAG 包裹，片段表按运行时拼接结果翻译；private 字段名（#$.path）
 		// 不进锚点，匹配时由通配兜底捕获。
@@ -1433,7 +1444,11 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		  // v18.9: 局部变量 s→n 后首选精确失配，而短锚点的通配兜底会命中 320 个方法（不唯一）。
 		  // 加一条当前拼写（含后续判别式）作为 alt，精确匹配优先命中；旧版本仍走首选。
 		  alts: [{ find: 'showStatus(e,t){let n=this.ctx.chatContainer.children,s=n.length>0?n[n.length-1]:void 0,i={styleFn:t?.dim??!0?(l)=>S.fg("dim",l):void 0,toast:t?.toast}', replace: `showStatus(e,t){e=${FN_FRAG}(e);let n=this.ctx.chatContainer.children,s=n.length>0?n[n.length-1]:void 0,i={styleFn:t?.dim??!0?(l)=>S.fg("dim",l):void 0,toast:t?.toast}` }] },
-		{ name: "warning sink", find: "showWarning(e,t){let s=new re(`Warning: ${e}`,1,0)", replace: `showWarning(e,t){e=${FN_FRAG}(e);let s=new re(\`Warning: \${e}\`,1,0)` },
+		{ name: "warning sink", find: "showWarning(e,t){let s=new re(`Warning: ${e}`,1,0)", replace: `showWarning(e,t){e=${FN_FRAG}(e);let s=new re(\`Warning: \${e}\`,1,0)`,
+		  // v18.18: 同 error sink，改由 `ure.line("warning",e)` 渲染；第二参数变成
+		  // options（hideWithToolActivity），消息仍是第一个参数。
+		  alts: [{ find: 'showWarning(e,t){let n=ure.line("warning",e);',
+		    replace: `showWarning(e,t){let n=ure.line("warning",${FN_FRAG}(e));` }] },
 { name: "agent hub tabs", find: "`${e(\"agents\",\"1 Agents\")}${b.fg(\"dim\",b.sep.dot)}${e(\"activity\",\"2 Activity\")}`", replace: ` ${FN_FRAG}(\`\${e(\"agents\",\"1 Agents\")}\${b.fg(\"dim\",b.sep.dot)}\${e(\"activity\",\"2 Activity\")}\`)` },
 { name: "settings hint bar", find: "c.push(hs(b.fg(\"dim\",this.#y()),e))", replace: `c.push(hs(b.fg(\"dim\",${FN_FRAG}(this.#y())),e))` },
 { name: "tool activity hidden status", find: "`Tool activity is hidden \\u2014 show it with ${t} before expanding`", replace: `${FN_FRAG}(\`Tool activity is hidden \\u2014 show it with \${t} before expanding\`)` },
