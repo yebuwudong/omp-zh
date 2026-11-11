@@ -11,7 +11,7 @@
  */
 import * as fs from "node:fs";
 import { parse } from "@babel/parser";
-import { matchLoose } from "./loose-anchor";
+import { matchLoose, resolveAnchorSpellings } from "./loose-anchor";
 
 interface Spelling { find: string; replace: string }
 interface AnchorPatch { name: string; find: string; replace: string; all?: true; loose?: { find: string; replace: string }; alts?: readonly Spelling[] }
@@ -71,35 +71,67 @@ const findOccurrences = (haystack: string, needle: string): number[] => {
 };
 
 let ok = 0;
-const missing: { name: string; find: string }[] = [];
+interface Problem { name: string; find: string; kind: "missing" | "ambiguous"; detail?: string }
+const problems: Problem[] = [];
+// 体检必须与 apply 的判定完全一致，否则会出现「体检 74/74 全绿、apply 却报
+// anchor not unique」这种误报——只数「能不能命中」而不数「命中几个」就会漏掉
+// 不唯一。这里直接复用 resolveAnchorSpellings，并把多命中当成问题。
 for (const patchEntry of ANCHOR_PATCHES) {
 	const spellings: Spelling[] = [{ find: patchEntry.find, replace: patchEntry.replace }, ...(patchEntry.alts ?? [])];
-	let hit = false;
-	for (const s of spellings) {
-		if (findOccurrences(code, s.find).length > 0) { hit = true; break; }
+	const hits = resolveAnchorSpellings(code, spellings, patchEntry.all);
+	if (hits.length === 0) {
+		problems.push({ name: patchEntry.name, find: patchEntry.find, kind: "missing" });
+		continue;
 	}
-	if (!hit) {
-		for (const s of spellings) {
-			if (matchLoose(code, s.find).length > 0) { hit = true; break; }
-		}
+	if (hits.length > 1 && !patchEntry.all) {
+		// 哪一条拼写撑出了多命中？逐条查，方便判断该加长锚点还是补 alts。
+		const blame = spellings
+			.map(s => ({ s, n: findOccurrences(code, s.find).length || matchLoose(code, s.find).length }))
+			.filter(x => x.n > 1)
+			.sort((a, b) => b.n - a.n)[0];
+		problems.push({
+			name: patchEntry.name,
+			find: blame?.s.find ?? patchEntry.find,
+			kind: "ambiguous",
+			detail: `${hits.length} matches${blame ? ` (spelling matches ${blame.n})` : ""}`,
+		});
+		continue;
 	}
-	if (hit) { ok++; continue; }
-	missing.push({ name: patchEntry.name, find: patchEntry.find });
+	ok++;
 }
 
 console.log(`bundle: ${cliPath} (${(code.length / 1e6).toFixed(1)}MB)`);
-console.log(`anchors: ${ok}/${ANCHOR_PATCHES.length} resolvable, ${missing.length} missing\n`);
-for (const m of missing) {
-	console.log(`✗ ${m.name}`);
-	console.log(`  find: ${m.find.slice(0, 160)}`);
-	// 用 find 里最长的带空格字面量片段在产物中定位上下文，帮助写 alts
-	const literals = [...m.find.matchAll(/"([^"]{6,})"/g)].map(x => x[1])
-		.concat([...m.find.matchAll(/[A-Za-z][A-Za-z ,.:;/()'"-]{10,}/g)].map(x => x[0]));
-	const probe = literals.sort((a, b) => b.length - a.length)[0];
-	if (probe) {
-		const idx = code.indexOf(probe);
-		if (idx !== -1) console.log(`  ctx : …${code.slice(Math.max(0, idx - 120), idx + probe.length + 80).replace(/\n/g, "\\n")}…`);
-		else console.log(`  ctx : (probe "${probe.slice(0, 60)}" not in bundle)`);
+const missingCount = problems.filter(p => p.kind === "missing").length;
+const ambiguousCount = problems.length - missingCount;
+console.log(
+	`anchors: ${ok}/${ANCHOR_PATCHES.length} applicable, ${missingCount} missing, ${ambiguousCount} not unique\n`,
+);
+for (const m of problems) {
+	console.log(`✗ ${m.name}  [${m.kind === "missing" ? "找不到" : "不唯一"}]${m.detail ? `  ${m.detail}` : ""}`);
+	console.log(`  find: ${m.find.slice(0, 200)}`);
+	if (m.kind === "missing") {
+		// 用 find 里最长的带空格字面量片段在产物中定位上下文，帮助写 alts
+		const literals = [...m.find.matchAll(/"([^"]{6,})"/g)].map(x => x[1])
+			.concat([...m.find.matchAll(/[A-Za-z][A-Za-z ,.:;/()'"-]{10,}/g)].map(x => x[0]));
+		const probe = literals.sort((a, b) => b.length - a.length)[0];
+		if (probe) {
+			const idx = code.indexOf(probe);
+			if (idx !== -1) console.log(`  ctx : …${code.slice(Math.max(0, idx - 120), idx + probe.length + 80).replace(/\n/g, "\\n")}…`);
+			else console.log(`  ctx : (probe "${probe.slice(0, 60)}" not in bundle)`);
+		}
+	} else {
+		// 多命中：打印前两个位置的真实上下文，看锚点是否需要加长。
+		const hits = resolveAnchorSpellings(code, [{ find: m.find, replace: "" }], false);
+		for (const [i, h] of hits.slice(0, 3).entries()) {
+			console.log(`  #${i + 1} : …${code.slice(Math.max(0, h.start - 90), h.end + 60).replace(/\n/g, "\\n")}…`);
+		}
+		if (hits.length === 0) {
+			for (const [i, h] of matchLoose(code, m.find).slice(0, 3).entries()) {
+				console.log(`  #${i + 1} : …${code.slice(Math.max(0, h.start - 90), h.end + 60).replace(/\n/g, "\\n")}…`);
+			}
+		}
 	}
 	console.log();
 }
+if (problems.length > 0) process.exitCode = 1;
+

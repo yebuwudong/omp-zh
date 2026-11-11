@@ -1443,7 +1443,12 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 { name: "status sink", find: "showStatus(e,t){let s=this.ctx.chatContainer.children", replace: `showStatus(e,t){e=${FN_FRAG}(e);let s=this.ctx.chatContainer.children`,
 		  // v18.9: 局部变量 s→n 后首选精确失配，而短锚点的通配兜底会命中 320 个方法（不唯一）。
 		  // 加一条当前拼写（含后续判别式）作为 alt，精确匹配优先命中；旧版本仍走首选。
-		  alts: [{ find: 'showStatus(e,t){let n=this.ctx.chatContainer.children,s=n.length>0?n[n.length-1]:void 0,i={styleFn:t?.dim??!0?(l)=>S.fg("dim",l):void 0,toast:t?.toast}', replace: `showStatus(e,t){e=${FN_FRAG}(e);let n=this.ctx.chatContainer.children,s=n.length>0?n[n.length-1]:void 0,i={styleFn:t?.dim??!0?(l)=>S.fg("dim",l):void 0,toast:t?.toast}` }] },
+		  alts: [{ find: 'showStatus(e,t){let n=this.ctx.chatContainer.children,s=n.length>0?n[n.length-1]:void 0,i={styleFn:t?.dim??!0?(l)=>S.fg("dim",l):void 0,toast:t?.toast}', replace: `showStatus(e,t){e=${FN_FRAG}(e);let n=this.ctx.chatContainer.children,s=n.length>0?n[n.length-1]:void 0,i={styleFn:t?.dim??!0?(l)=>S.fg("dim",l):void 0,toast:t?.toast}` },
+		    // v18.18.8: style 对象增加 action 字段，局部变量 r/s 重排，`S.fg`→`R.fg`。
+		    // 首选拼写只是 `showStatus(e,t){let s=this...` 这么一段前缀，通配兜底会命中
+		    // 380+ 处函数头（不唯一），所以这里必须给到完整判别式。
+		    { find: 'showStatus(e,t){let n=this.ctx.chatContainer.children,r=n.length>0?n[n.length-1]:void 0,s={styleFn:t?.dim??!0?(l)=>R.fg("dim",l):void 0,toast:t?.toast,action:t?.action}',
+		      replace: `showStatus(e,t){e=${FN_FRAG}(e);let n=this.ctx.chatContainer.children,r=n.length>0?n[n.length-1]:void 0,s={styleFn:t?.dim??!0?(l)=>R.fg("dim",l):void 0,toast:t?.toast,action:t?.action}` }] },
 		{ name: "warning sink", find: "showWarning(e,t){let s=new re(`Warning: ${e}`,1,0)", replace: `showWarning(e,t){e=${FN_FRAG}(e);let s=new re(\`Warning: \${e}\`,1,0)`,
 		  // v18.18: 同 error sink，改由 `ure.line("warning",e)` 渲染；第二参数变成
 		  // options（hideWithToolActivity），消息仍是第一个参数。

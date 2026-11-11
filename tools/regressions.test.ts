@@ -31,6 +31,26 @@ describe("anchor alternatives", () => {
 		expect(hits).toHaveLength(1);
 		expect(hits[0].replace).toBe('status(e,t){e=translate(e);let r=this.ctx.children,s={dim:t?.dim,label:"status"}');
 	});
+
+	// 18.18.8 的真实事故：首选拼写是短前缀（`showStatus(e,t){let s=this...`），
+	// 上游把局部变量 s→n 并加了 style 字段后，旧形态两者都不中，通配兜底在
+	// 18MB 产物里命中 382 处函数头。apply 正确报错，但 tools/anchor-check.ts
+	// 当时只数「能不能命中」不数「命中几个」，于是体检报 74/74 全绿、apply 却
+	// 失败。这里锁住两件事：短前缀确实不唯一；带完整判别式的 alt 能收敛到 1。
+	test("a short prefix is ambiguous while the full discriminant is unique", () => {
+		const short = { find: "sink(e,t){let s=this.ctx.children", replace: "x" };
+		const full = {
+			find: 'sink(e,t){let n=this.ctx.children,r={styleFn:t?.dim,toast:t?.toast,action:t?.action}',
+			replace: 'sink(e,t){e=f(e);let n=this.ctx.children,r={styleFn:t?.dim,toast:t?.toast,action:t?.action}',
+		};
+		const bundle = 'sink(e,t){let n=this.ctx.children,r={styleFn:t?.dim,toast:t?.toast,action:t?.action};return r}' +
+			'sink(e,t){let n=this.other.children;return n}' +
+			'helper(e,t){let n=this.ctx.children;return n}';
+		// 短前缀：精确不中，通配命中 3 处 —— 不唯一
+		expect(resolveAnchorSpellings(bundle, [short])).toHaveLength(3);
+		// 完整判别式：收敛到唯一一处
+		expect(resolveAnchorSpellings(bundle, [short, full])).toHaveLength(1);
+	});
 });
 
 describe("launcher ownership", () => {

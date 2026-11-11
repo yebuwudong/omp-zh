@@ -405,6 +405,33 @@ if (k === __omp_i18n_t("__proto__") || ...) continue;  // 恒为 false，防护�
 
 ## 更新日志
 
+### 适配 omp 18.18.8：状态行锚点不唯一
+
+又一次「新版汉化失败」。这次 `apply` 报的是 `anchor not unique: status sink
+(382 matches …)`，而上游只是把 `showStatus` 里的局部变量重排了一下：
+
+```
+18.18.1  showStatus(e,t){let n=this.ctx.chatContainer.children,s=n.length>0?…,i={…,toast:t?.toast}
+18.18.8  showStatus(e,t){let n=this.ctx.chatContainer.children,r=n.length>0?…,s={…,toast:t?.toast,action:t?.action}
+```
+
+旧 alt 里的 `s=` / `i=` 两个名字全变了，所以精确失配；而首选拼写
+`showStatus(e,t){let s=this.ctx.chatContainer.children` 只有一小段前缀，
+通配兜底在 18.9MB 产物里命中 382 处同类函数头——不唯一。补上带完整判别式
+（含新增的 `action` 字段）的 alt 后收敛到 1。
+
+**更值得修的是一直让这个问题漏网的体检工具。** `tools/anchor-check.ts` 原来
+只数「能不能命中」不数「命中几个」，于是报 74/74 全绿、`apply` 却直接失败，
+两个工具对同一份产物结论相反。现在体检复用与 `apply` 完全相同的
+`resolveAnchorSpellings` 判定，把「找不到」和「不唯一」分开报；不唯一时打印
+前几条真实命中位置，直接看出锚点该加多长。发现与 `apply` 不一致时以 apply 为准，
+再补一条回归测试锁住这个语义（`a short prefix is ambiguous while the full
+discriminant is unique`）。
+
+另：omp 18.18 要求 **Bun ≥ 1.4.4**。侧载的预编译二进制由本机 bun 编出，用旧 bun
+编译的二进制启动时会报 `Bun runtime must be >= 1.4.4`，升级 bun 后需重跑
+`bun patch.ts native` 重编。
+
 ### 适配 omp 18.18.1：首启页与错误/警告提示恢复中文
 
 上游 18.18 重构了首次设置页和错误/警告的渲染出口，4 个锚点在产物里**完全消失**
@@ -429,7 +456,7 @@ if (k === __omp_i18n_t("__proto__") || ...) continue;  // 恒为 false，防护�
 
 另：omp 18.18 要求 **Bun ≥ 1.4.4**。侧载的预编译二进制由本机 bun 编出，用旧 bun
 编译的二进制启动时会报 `Bun runtime must be >= 1.4.4`，升级 bun 后需重跑
-`bun patch.ts native` 重编。
+`bun patch.ts native` 重编（此处一次说完，下文不再重复）。
 
 ### TUI 面板残留英文系统性覆盖
 
