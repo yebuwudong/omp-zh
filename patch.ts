@@ -45,7 +45,7 @@
 
 import { parse } from "@babel/parser";
 import * as crypto from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import * as os from "node:os";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -90,6 +90,10 @@ const looksLikeNativeBinary = async (p: string): Promise<boolean> => {
 
 const SIDECAR_ROOT = path.join(os.homedir(), ".omp-zh", "runtime");
 const LAUNCHER_DIR = path.join(os.homedir(), ".omp-zh", "bin");
+// Declared before the first top-level await: the launcher is generated while
+// the module is still evaluating, so anything used there must already be
+// initialised (a later `const` would still be in its temporal dead zone).
+const WORK = import.meta.dir;
 
 const IS_WINDOWS = process.platform === "win32";
 const READ_ONLY = process.argv[2] === "doctor";
@@ -200,6 +204,97 @@ const BUN_PATH = ((): string => {
 	const which = Bun.which("bun");
 	return which ?? "bun";
 })();
+
+/** Compare dotted versions; returns -1, 0 or 1. */
+const cmpVersion = (a: string, b: string): number => {
+	const x = a.split(".").map(Number);
+	const y = b.split(".").map(Number);
+	for (let i = 0; i < 3; i++) {
+		const d = (x[i] ?? 0) - (y[i] ?? 0);
+		if (d !== 0) return d < 0 ? -1 : 1;
+	}
+	return 0;
+};
+
+/**
+ * Minimum bun version the sidecar requires, read from its own package.json
+ * (`engines.bun`, e.g. ">=1.4.4").
+ *
+ * Upstream raises that floor between releases — 19.0.0 wants >= 1.4.4 — and
+ * the sidecar aborts at startup on an older bun. So the launcher must not
+ * simply point at whatever bun happens to be on PATH: the interactive `bun`
+ * here is 1.3.14 while a managed 1.4.4 copy lives in `toolchain/`, and a
+ * launcher pinned to the former dies with "Bun runtime must be >= 1.4.4".
+ */
+const sidecarBunFloor = async (cli: string): Promise<string | undefined> => {
+	const pkg = path.join(path.dirname(path.dirname(cli)), "package.json");
+	try {
+		const engines = JSON.parse(await fs.readFile(pkg, "utf8")).engines ?? {};
+		const m = /(\d+\.\d+\.\d+)/.exec(String(engines.bun ?? ""));
+		return m?.[1];
+	} catch {
+		return undefined;
+	}
+};
+
+/** Bun executables worth trying, best first. */
+const bunCandidates = (): string[] => {
+	const out: string[] = [];
+	// Managed copies under the repo's toolchain/ come first: they are the only
+	// ones guaranteed to satisfy the sidecar's engine floor.
+	const toolchain = path.join(WORK, "toolchain");
+	try {
+		const dirs = readdirSync(toolchain)
+			.filter(d => /^bun-\d/.test(d))
+			.sort((a, b) => cmpVersion(b.replace(/^bun-/, ""), a.replace(/^bun-/, "")));
+		for (const d of dirs) {
+			const exe = path.join(toolchain, d, "bun");
+			if (existsSync(exe)) out.push(exe);
+		}
+	} catch { /* no toolchain directory */ }
+	try {
+		const exe = process.execPath;
+		if (exe && existsSync(exe) && /(^|[/\\])bun(?:\.exe)?$/i.test(exe)) out.push(exe);
+	} catch { /* ignore */ }
+	const which = Bun.which("bun");
+	if (which) out.push(which);
+	return [...new Set(out)];
+};
+
+/** Version reported by a bun executable, or undefined when it cannot run. */
+const bunVersionOf = (exe: string): string | undefined => {
+	try {
+		const proc = Bun.spawnSync([exe, "--version"], { stdout: "pipe", stderr: "ignore" });
+		if (proc.exitCode !== 0) return undefined;
+		return proc.stdout.toString().trim().match(/(\d+\.\d+\.\d+)/)?.[1];
+	} catch {
+		return undefined;
+	}
+};
+
+/**
+ * Pick a bun that satisfies the sidecar's engine floor.
+ *
+ * When nothing satisfies it the highest version found is returned anyway, so
+ * the caller can still try and report a precise error instead of failing
+ * silently.
+ */
+const resolveSidecarBun = async (cli: string): Promise<{ exe: string; floor: string | undefined }> => {
+	const floor = await sidecarBunFloor(cli);
+	const candidates = bunCandidates();
+	let best: { exe: string; version: string } | undefined;
+	for (const exe of candidates) {
+		const version = bunVersionOf(exe);
+		if (!version) continue;
+		if (!floor || cmpVersion(version, floor) >= 0) return { exe, floor };
+		if (!best || cmpVersion(version, best.version) > 0) best = { exe, version };
+	}
+	const fallback = best?.exe ?? candidates[0] ?? BUN_PATH;
+	if (floor && best) {
+		console.error(`警告：没有满足 >= ${floor} 的 bun（最高 ${best.version}），启动器将使用 ${fallback}。`);
+	}
+	return { exe: fallback, floor };
+};
 
 /**
  * Standalone precompiled binary for a sidecar version, next to the JS bundle it
@@ -333,15 +428,23 @@ const compileNative = async (cli: string, version: string): Promise<string | und
 	// because bun only inlines assets the entry imports. The .node native addon
 	// is deliberately excluded: it resolves through ~/.omp/natives/<version>/
 	// instead and must be copied there separately.
-	const assets = (await fs.readdir(distDir))
-		.filter(f => f !== "cli.js" && f !== "types" && !f.endsWith(".node"))
-		.map(f => ["--asset", path.join(distDir, f)]);
+	// Only regular files are embeddable. The backup directory the patcher writes
+	// next to the bundle (`dist/.omp-zh-backup/`) is a directory: handing it to
+	// `bun build` makes bun treat it as an entry point and abort with
+	// "ModuleNotFound resolving .../.omp-zh-backup (entry point)".
+	const assets = (await fs.readdir(distDir, { withFileTypes: true }))
+		.filter(e => e.isFile() && e.name !== "cli.js" && e.name !== "types" && !e.name.endsWith(".node"))
+		.map(e => ["--asset", path.join(distDir, e.name)]);
 	if (assets.length === 0) {
 		console.error("警告：产物目录没有可嵌入的静态资源，编译产物可能只能用于 --version");
 	}
 	console.error(`正在预编译字节码二进制（含 ${assets.length} 个静态资源，约 6 秒）：${out} …`);
+	// The compiled binary embeds the bun that built it, and the sidecar aborts
+	// on a bun older than its engine floor. So the build must run with a bun
+	// that satisfies the floor, not with whatever `bun` is on PATH.
+	const { exe: bunExe } = await resolveSidecarBun(cli);
 	const proc = Bun.spawnSync(
-		["bun", "build", "--compile", "--bytecode", "--format=esm", ...assets.flat(), cli, "--outfile", out],
+		[bunExe, "build", "--compile", "--bytecode", "--format=esm", ...assets.flat(), cli, "--outfile", out],
 		{ cwd, stdout: "ignore", stderr: "pipe" },
 	);
 	if (proc.exitCode !== 0 || !existsSync(out)) {
@@ -389,8 +492,11 @@ const compileNative = async (cli: string, version: string): Promise<string | und
 const writeLauncher = async (cli: string): Promise<string> => {
 	await fs.mkdir(LAUNCHER_DIR, { recursive: true });
 	const launcher = launcherPath;
+	// The launcher must run the sidecar on a bun that satisfies the sidecar's
+	// engine floor; the bun that happens to be on PATH often does not.
+	const { exe: bunExe, floor } = await resolveSidecarBun(cli);
 	if (IS_WINDOWS) {
-		const linked = await linkLaunchers(launcher, cli, BUN_PATH, [LAUNCHER_DIR], true);
+		const linked = await linkLaunchers(launcher, cli, bunExe, [LAUNCHER_DIR], true);
 		if (!linked.length) throw new Error(`cannot create or refresh generated launcher: ${launcher}`);
 		return launcher;
 	}
@@ -402,8 +508,10 @@ const writeLauncher = async (cli: string): Promise<string> => {
 		`#!/bin/sh\n` +
 		`# Generated by omp-zh. Runs the patched omp bundle.\n` +
 		`# Uses an absolute bun path so the launcher works without ~/.bun/bin on PATH.\n` +
-		`BUN=${JSON.stringify(BUN_PATH)}\n` +
+		`BUN=${JSON.stringify(bunExe)}\n` +
 		`[ -x "$BUN" ] || BUN=bun\n` +
+		`# Minimum bun the sidecar accepts (engines.bun of the pinned release).\n` +
+		`REQUIRED_BUN=${JSON.stringify(floor ?? "")}\n` +
 		`\n` +
 		`# Resolve the sidecar at launch: the official omp is upgraded in place,\n` +
 		`# and a hard-coded path would keep running the previous release until\n` +
@@ -498,6 +606,15 @@ const writeLauncher = async (cli: string): Promise<string> => {
 		`\t\techo "omp-zh: 官方 omp 已是 \${WANT}，但没有可用的汉化运行时。" >&2\n` +
 		`\tfi\n` +
 		`\techo "        请重跑：\${HOME}/.omp-zh/omp-zh.sh apply" >&2\n` +
+		`fi\n` +
+		`# Fail fast when the bun at hand is older than the sidecar's floor: the\n` +
+		`# sidecar aborts with "Bun runtime must be >= X" and hides the real cause.\n` +
+		`if [ -n "$REQUIRED_BUN" ]; then\n` +
+		`\tBVER=$("$BUN" --version 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -n1)\n` +
+		`\tif [ -n "$BVER" ]; then\n` +
+		`\t\tOK=$(awk -v a="$BVER" -v b="$REQUIRED_BUN" 'BEGIN{split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if((x[i]+0)<(y[i]+0)){print 0;exit}if((x[i]+0)>(y[i]+0)){print 1;exit}}print 1}')\n` +
+		`\t\t[ "$OK" = 1 ] || { echo "omp-zh: bun 版本过低（需要 >= $REQUIRED_BUN，实际 $BVER）" >&2; exit 1; }\n` +
+		`\tfi\n` +
 		`fi\n` +
 		`# Prefer the bytecode binary; fall back to bun reading the JS bundle.\n` +
 		`if [ -n "$NATIVE" ]; then exec "$NATIVE" "$@"; fi\n` +
@@ -728,7 +845,6 @@ const readBundle = async (target: string): Promise<string> => {
 	}
 	return text;
 };
-const WORK = import.meta.dir;
 const DICT_PATH = path.join(WORK, "dict.json");
 const DICT_EXTRA_PATH = path.join(WORK, "dict-extra.json");
 // Backups live next to the installed bundle, not inside the patch repo:
