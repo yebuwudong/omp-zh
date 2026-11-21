@@ -3114,6 +3114,92 @@ const doctor = async (): Promise<void> => {
 	}
 };
 
+/**
+ * Report every anchor's resolution status against the current bundle without
+ * touching the file.
+ *
+ * `apply` aborts on the first unresolved anchor, so an operator learns about
+ * one broken anchor per attempt — on a release that renamed or duplicated
+ * several strings, that turns an upgrade into a guess-and-retry loop. This
+ * walks the whole anchor table and reports every outcome at once: ok,
+ * adapted (minifier rename absorbed by the wildcard fallback), obsolete
+ * (the key is covered by the literal scan), rescued (the key was wrapped at
+ * its scan position), MISSING (upstream dropped the text) or NOT-UNIQUE
+ * (upstream reused the same string elsewhere).
+ *
+ * Reads the pristine backup when the installed bundle is already patched, so
+ * it can be run against a live install without restoring first.
+ */
+const auditAnchors = async (): Promise<void> => {
+	await migrateBackups();
+	const dict = await loadDict();
+	let target = CLI_PATH;
+	let code = await readBundle(target);
+	if (code.includes(`var ${DICT_VAR}=`)) {
+		const pristine = await pristinePath();
+		if (pristine === null) {
+			throw new Error(
+				`${target} is already patched and no pristine backup was found beside it\n` +
+				`  restore first: bun patch.ts restore`,
+			);
+		}
+		console.log(`(${path.basename(target)} is already patched — auditing ${path.basename(pristine)})\n`);
+		target = pristine;
+		code = await readBundle(target);
+	}
+	console.log(`auditing ${target} (${(code.length / 1e6).toFixed(2)}MB)\n`);
+
+	const { occurrences } = scanBundle(code, dict);
+	const verdicts = decideAll(occurrences, dict);
+	const RESCUE_SAFE = (role: string): boolean =>
+		DIRECT_ROLES[role] === true || role === "arrayElem" || role === "other" ||
+		role === "groupKey" || role === "groupArrayElem";
+
+	let broken = 0;
+	const brokenRows: string[] = [];
+	for (const patch of ANCHOR_PATCHES) {
+		const hits = resolveAnchor(code, patch);
+		if (hits.length === 0) {
+			// Same rescue rules as planAnchors, but reported instead of thrown.
+			const keys = [patch, ...(patch.alts ?? [])]
+				.flatMap(s => [...s.replace.matchAll(/"((?:[^"\\]|\\.)+)"/g)].map(m => m[1]));
+			const covered = keys.length > 0 && keys.every(k =>
+				verdicts.some(v => v.key === k && v.translate.length > 0));
+			if (covered) {
+				console.log(`ok        ${patch.name} (obsolete: key covered by scan)`);
+				continue;
+			}
+			const keyOccs = keys.map(k => ({ key: k, occs: occurrences.get(k) ?? [] }));
+			const rescuable = keyOccs.length > 0 &&
+				keyOccs.every(({ occs }) => occs.length > 0 && occs.every(o => RESCUE_SAFE(o.role)));
+			if (rescuable) {
+				console.log(`ok        ${patch.name} (rescued: key wrapped at scan position)`);
+				continue;
+			}
+			broken++;
+			const row = `MISSING   ${patch.name}\n            find=${JSON.stringify(patch.find)}`;
+			brokenRows.push(row);
+			console.log(row);
+			continue;
+		}
+		if (hits.length > 1 && !patch.all) {
+			broken++;
+			const row = `NOT-UNIQUE ${patch.name} (${hits.length} matches)\n            find=${JSON.stringify(patch.find)}`;
+			brokenRows.push(row);
+			console.log(row);
+			continue;
+		}
+		const adapted = hits.filter(h => h.adapted).length;
+		console.log(`ok        ${patch.name}${adapted ? ` (${adapted} 处适配)` : ""}`);
+	}
+	console.log(`\n锚点 ${ANCHOR_PATCHES.length} 条，失配 ${broken} 条`);
+	if (broken > 0) {
+		console.log("\n失配锚点的修法：给 find 加上下文前缀让它唯一（例：把 description 行改成带 name: init 前缀），");
+		console.log("或确认这一处是否该译（上游给模型做扰动的匹配键通常保持原文）。");
+		process.exitCode = 1;
+	}
+};
+
 const command = process.argv[2] ?? "report";
 if (command === "doctor") {
 	await doctor();
@@ -3126,6 +3212,8 @@ if (command === "doctor") {
 		codeIdx === -1 ? undefined : process.argv[codeIdx + 1],
 		jsonIdx === -1 ? undefined : process.argv[jsonIdx + 1],
 	);
+} else if (command === "anchors") {
+	await auditAnchors();
 } else if (command === "migrate") {
 	const before = await listBackupEntries();
 	await migrateBackups();
@@ -3198,6 +3286,6 @@ else if (command === "probe") {
 	}
 }
 else {
-	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe|path|check|migrate|doctor|native)`);
+	console.error(`unknown command: ${command} (report|apply|verify|restore|list|probe|path|check|anchors|migrate|doctor|native)`);
 	process.exit(1);
 }
