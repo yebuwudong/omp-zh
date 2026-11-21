@@ -27,3 +27,6 @@ dict-candidates.json
 report-gaps.json
 report-gap-keys.json
 report-verdicts.json
+
+# 升级日志（每次 omp-upgrade 生成）
+logs/
