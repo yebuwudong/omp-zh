@@ -1466,7 +1466,11 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// JS。包 helper 会把调用源码当成字符串塞进 description，运行时补全列表
 		// 再过一次片段翻译，就显示成 `__omp_i18n_t("为当前代码库生成…")`（#6 真机
 		// 反馈）。直接写译文。
-		{ name: "init cmd desc", find: "description: Generate AGENTS.md for current codebase", replace: "description: 为当前代码库生成 AGENTS.md" },
+		// 19.1.0 起，同一句英文在 bundle 里出现两次：一次是 /init 的 frontmatter，
+		// 一次是上游 prompt-perturbation 表（JSON 里的 "source" 键）——后者的
+		// 变体清单全英文，是给模型做扰动的匹配键，不该跟着译。把 name: init
+		// 一起带上，锚点就只命中 frontmatter 这一处。
+		{ name: "init cmd desc", find: "name: init\ndescription: Generate AGENTS.md for current codebase", replace: "name: init\ndescription: 为当前代码库生成 AGENTS.md" },
 		{ name: "update notification", find: "`New version ${e} is available. Run: `", replace: `${FN_FRAG}(\`New version \${e} is available. Run: \`)` },
 		{ name: "tool output expansion status", find: "`Tool output expansion: ${this.ctx.toolOutputExpanded?\"enabled\":\"disabled\"}`", replace: `${FN_FRAG}(\`Tool output expansion: \${this.ctx.toolOutputExpanded?\"enabled\":\"disabled\"}\`)` },
 				// Settings panel bottom hint bar: fragment-translate the concatenated
