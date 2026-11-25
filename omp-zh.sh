@@ -94,6 +94,14 @@ status)
 	# macOS bash ships no `timeout`, so probe with it only when present:
 	# `timeout 30 …` would exit 127 here and always print 无法执行.
 	probe_version() {
+		# Ask the generated launcher: it already resolves the sidecar, the
+		# bytecode binary and a bun that satisfies the sidecar's engine floor.
+		# Running "$CLI" directly would use whatever bun is on PATH, which can
+		# be older than the floor and then report 无法执行 for a healthy install.
+		local launcher="$HERE/bin/omp-zh"
+		if [[ -x "$launcher" ]]; then
+			"$launcher" --version 2>/dev/null && return 0
+		fi
 		if command -v timeout >/dev/null 2>&1; then
 			timeout 30 "$CLI" --version 2>/dev/null
 		else
