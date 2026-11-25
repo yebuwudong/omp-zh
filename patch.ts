@@ -1417,13 +1417,25 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	  // 改走 `ht(se([...]))` 的块包装。旧拼写在 18.18 产物里完全不存在，
 	  // 通配兜底也救不回来（标识符外的结构也变了），只能按新形态补 alt。
 	  alts: [{ find: 's.push(ht(se([O(r,"strong")],{role:"omp.setup.title"}),"title")),i)s.push(ht(se([O(i,"muted")],{role:"omp.setup.subtitle"}),"subtitle"))',
-	    replace: `s.push(ht(se([O(${FN_FRAG}(r),"strong")],{role:"omp.setup.title"}),"title")),i)s.push(ht(se([O(${FN_FRAG}(i),"muted")],{role:"omp.setup.subtitle"}),"subtitle"))` }] },
-	{ name: "setup sign-in subtitle", find: "`Sign in to one or more providers. Press ${wt(\"tui.select.cancel\")} when you're done.`", replace: ` ${FN}("Sign in to one or more providers. Press {{key}} when you're done.").replace("{{key}}",wt("tui.select.cancel"))` },
+	    replace: `s.push(ht(se([O(${FN_FRAG}(r),"strong")],{role:"omp.setup.title"}),"title")),i)s.push(ht(se([O(${FN_FRAG}(i),"muted")],{role:"omp.setup.subtitle"}),"subtitle"))` },
+	    // v19.2.0: 首启页改由 T9d 渲染，标题/副标题各自套一层 re(...)。
+	    { find: 's.push(`${o}${re(n.style("strong",t.title),i)}`),t.subtitle)s.push(`${o}${re(n.fg("muted",t.subtitle),i)}`);',
+	      replace: `s.push(\`\${o}\${re(n.style("strong",${FN_FRAG}(t.title)),i)}\`),t.subtitle)s.push(\`\${o}\${re(n.fg("muted",${FN_FRAG}(t.subtitle)),i)}\`);` }] },
+	{ name: "setup sign-in subtitle", find: "`Sign in to one or more providers. Press ${wt(\"tui.select.cancel\")} when you're done.`", replace: ` ${FN}("Sign in to one or more providers. Press {{key}} when you're done.").replace("{{key}}",wt("tui.select.cancel"))`,
+	  // v19.2.0: 取消键文案改由 Bh(Jo("tui.select.cancel","escape")) 动态渲染。
+	  alts: [{ find: "get subtitle(){return`Sign in to one or more providers. Press ${Bh(Jo(\"tui.select.cancel\",\"escape\"))} when you're done.`}",
+	    replace: `get subtitle(){return ${FN}("Sign in to one or more providers. Press {{key}} when you're done.").replace("{{key}}",Bh(Jo("tui.select.cancel","escape")))}` }] },
 	{ name: "setup progress", find: '`Setup step ${this.#n+1} of ${this.scenes.length}`', replace: ` ${FN}("Setup step {{current}} of {{total}}").replace("{{current}}",String(this.#n+1)).replace("{{total}}",String(this.scenes.length))`, all: true,
 	  // v18.18: 进度行改由渲染器 #v(e,t) 用局部变量拼接（私有字段不复存在）。
 	  alts: [{ find: '`Setup step ${s+1} of ${o.length}`',
-	    replace: ` ${FN}("Setup step {{current}} of {{total}}").replace("{{current}}",String(s+1)).replace("{{total}}",String(o.length))` }] },
-	{ name: "setup saved heading", find: '`${E.status.success} Setup saved`', replace: `${FN_FRAG}(\`\${E.status.success} Setup saved\`)`, all: true },
+	    replace: ` ${FN}("Setup step {{current}} of {{total}}").replace("{{current}}",String(s+1)).replace("{{total}}",String(o.length))` },
+	    // v19.2.0: 进度行由 $Qu.term() 用 t.index() / t.scenes.length 拼装。
+	    { find: 'step:`Setup step ${t.index()+1} of ${t.scenes.length}`',
+	      replace: `step:${FN}("Setup step {{current}} of {{total}}").replace("{{current}}",String(t.index()+1)).replace("{{total}}",String(t.scenes.length))` }] },
+	{ name: "setup saved heading", find: '`${E.status.success} Setup saved`', replace: `${FN_FRAG}(\`\${E.status.success} Setup saved\`)`, all: true,
+	  // v19.2.0: 成功符号改由 theme.symbols.symbol("status.success") 提供。
+	  alts: [{ find: 'vX(r.fg("success",`${r.symbols.symbol("status.success")} Setup saved`),o))',
+	    replace: `vX(r.fg("success",${FN_FRAG}(\`\${r.symbols.symbol("status.success")} Setup saved\`)),o))` }] },
 	// Help epilogue: environment-variable / tool / plugin / useful-command
 	// reference block rendered by $3e (getExtraHelpText). Wrap the whole
 	// template in the fragment translator so each row resolves through the
@@ -1471,7 +1483,10 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 变体清单全英文，是给模型做扰动的匹配键，不该跟着译。把 name: init
 		// 一起带上，锚点就只命中 frontmatter 这一处。
 		{ name: "init cmd desc", find: "name: init\ndescription: Generate AGENTS.md for current codebase", replace: "name: init\ndescription: 为当前代码库生成 AGENTS.md" },
-		{ name: "update notification", find: "`New version ${e} is available. Run: `", replace: `${FN_FRAG}(\`New version \${e} is available. Run: \`)` },
+		{ name: "update notification", find: "`New version ${e} is available. Run: `", replace: `${FN_FRAG}(\`New version \${e} is available. Run: \`)`,
+		  // v19.2.0: 版本号改从 e.version 取。
+		  alts: [{ find: 'let t=`New version ${e.version} is available. Run: `',
+		    replace: `let t=${FN_FRAG}(\`New version \${e.version} is available. Run: \`)` }] },
 		{ name: "tool output expansion status", find: "`Tool output expansion: ${this.ctx.toolOutputExpanded?\"enabled\":\"disabled\"}`", replace: `${FN_FRAG}(\`Tool output expansion: \${this.ctx.toolOutputExpanded?\"enabled\":\"disabled\"}\`)` },
 				// Settings panel bottom hint bar: fragment-translate the concatenated
 		// key hints ("Enter to change \u00b7 Tab to jump tabs \u00b7 ...").
@@ -1488,6 +1503,9 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		  alts: [
 		    { find: "`${n}${zt([\"j\",\"k\"])}:select  ${we(\"enter\")}:open  ${we(\"t\")}:${s}  ${we(\"tab\")}:details  ${zt([\"r\",\"x\"])}:manage  ${we(\"escape\")}:close`",
 		      replace: `${FN_FRAG}(\`\${n}\${zt(["j","k"])}:select  \${we("enter")}:open  \${we("t")}:\${s}  \${we("tab")}:details  \${zt(["r","x"])}:manage  \${we("escape")}:close\`)` },
+		    // v19.2.0: 键位名改由 Mn()/Vr() 动态渲染。
+		    { find: 'if(r<t7d)return e.theme.fg("dim",`${i}j/k:select  ${a}:open  t:${o}  ${d}:details  r/x:manage  ${l}:close`);',
+		      replace: `if(r<t7d)return e.theme.fg("dim",${FN_FRAG}(\`\${i}j/k:select  \${a}:open  t:\${o}  \${d}:details  r/x:manage  \${l}:close\`));` },
 		  ] },
 		{ name: "agent hub hint detail",
 		  find: "`${n}1:agents  2:activity  Tab:roster  PgUp/PgDn:scroll  Enter:open  t:${s}  Esc:roster`",
@@ -1497,6 +1515,9 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		  alts: [
 		    { find: "`${n}1:agents  2:activity  ${we(\"tab\")}:roster  ${zt([\"pageUp\",\"pageDown\"])}:scroll  ${we(\"enter\")}:open  ${we(\"t\")}:${s}  ${we(\"escape\")}:roster`",
 		      replace: `${FN_FRAG}(\`\${n}1:agents  2:activity  \${we("tab")}:roster  \${zt(["pageUp","pageDown"])}:scroll  \${we("enter")}:open  \${we("t")}:\${s}  \${we("escape")}:roster\`)` },
+		    // v19.2.0: 键位名改由 Mn()/Vr() 动态渲染。
+		    { find: 'if(n)return e.theme.fg("dim",`${i}1:agents  2:activity  ${d}:roster  ${c}:scroll  ${a}:open  t:${o}  ${l}:roster`);',
+		      replace: `if(n)return e.theme.fg("dim",${FN_FRAG}(\`\${i}1:agents  2:activity  \${d}:roster  \${c}:scroll  \${a}:open  t:\${o}  \${l}:roster\`));` },
 		  ] },
 		{ name: "agent hub hint wide",
 		  find: "`${n}1:agents  2:activity  j/k/wheel:select  PgUp/PgDn:details  Enter/click:open  t:${s}  r:revive  x:kill  Esc:close`",
@@ -1506,6 +1527,9 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		  alts: [
 		    { find: "`${n}1:agents  2:activity  ${zt([\"j\",\"k\"])}/wheel:select  ${zt([\"pageUp\",\"pageDown\"])}:details  ${we(\"enter\")}/click:open  ${we(\"t\")}:${s}  ${we(\"r\")}:revive  ${we(\"x\")}:kill  ${we(\"escape\")}:close`",
 		      replace: `${FN_FRAG}(\`\${n}1:agents  2:activity  \${zt(["j","k"])}/wheel:select  \${zt(["pageUp","pageDown"])}:details  \${we("enter")}/click:open  \${we("t")}:\${s}  \${we("r")}:revive  \${we("x")}:kill  \${we("escape")}:close\`)` },
+		    // v19.2.0: 键位名改由 Mn()/Vr() 动态渲染。
+		    { find: 'return e.theme.fg("dim",`${i}1:agents  2:activity  j/k/wheel:select  ${c}:details  ${a}/click:open  t:${o}  r:revive  x:kill  ${l}:close`)}function h7d',
+		      replace: `return e.theme.fg("dim",${FN_FRAG}(\`\${i}1:agents  2:activity  j/k/wheel:select  \${c}:details  \${a}/click:open  t:\${o}  r:revive  x:kill  \${l}:close\`))}function h7d` },
 		  ] },
 		{ name: "agent hub roster hint",
 		  find: "cs(b.fg(\"dim\",\"1:agents  j/k:select  Enter:transcript  Space:follow  f:filter  s:scope  /:search  Esc:close\"),e)",
@@ -1515,19 +1539,29 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		  alts: [
 		    { find: "`1:agents  ${zt([\"j\",\"k\"])}:select  ${we(\"enter\")}:transcript  ${we(\"space\")}:follow  ${we(\"f\")}:filter  ${we(\"s\")}:scope  /:search  ${we(\"escape\")}:close`",
 		      replace: `${FN_FRAG}(\`1:agents  \${zt(["j","k"])}:select  \${we("enter")}:transcript  \${we("space")}:follow  \${we("f")}:filter  \${we("s")}:scope  /:search  \${we("escape")}:close\`)` },
+		    // v19.2.0: 名册页脚改由 FOt(...o.fg("dim",...)) 渲染，键位名用 Mn()/Vr()。
+		    { find: 'p.push(FOt(e,o.fg("dim",`1:agents  j/k:select  ${Mn("tui.select.confirm","enter",o)}:transcript  ${Vr(o,"space")}:follow  f:filter  s:scope  /:search  ${Mn("tui.select.cancel","escape",o)}:close`),n))',
+		      replace: `p.push(FOt(e,o.fg("dim",${FN_FRAG}(\`1:agents  j/k:select  \${Mn("tui.select.confirm","enter",o)}:transcript  \${Vr(o,"space")}:follow  f:filter  s:scope  /:search  \${Mn("tui.select.cancel","escape",o)}:close\`)),n))` },
 		  ] },
 		// showError root renderer: same sink approach as status/warning.
 		{ name: "error sink", find: "showError(e){let t=new re(`Error: ${e}`,1,0)", replace: `showError(e){e=${FN_FRAG}(e);let t=new re(\`Error: \${e}\`,1,0)`,
 		  // v18.18: 错误行不再自建 `re(...)`，统一走状态行渲染器 `ure.line("error",e)`。
 		  alts: [{ find: 'showError(e){this.ctx.present(ure.line("error",e))}',
-		    replace: `showError(e){this.ctx.present(ure.line("error",${FN_FRAG}(e)))}` }] },
+		    replace: `showError(e){this.ctx.present(ure.line("error",${FN_FRAG}(e)))}` },
+		    // v19.2.0: 错误行统一走 Ws(pvo,{tone:"error",message:e})。
+		    { find: 'showError(e){this.#c(()=>Ws(pvo,{tone:"error",message:e}))}',
+		      replace: `showError(e){e=${FN_FRAG}(e);this.#c(()=>Ws(pvo,{tone:"error",message:e}))}` }] },
 		// 会话录制状态行：纯渲染文本（`Recording to <path> · /record again to stop`）。
 		// 用 FN_FRAG 包裹，片段表按运行时拼接结果翻译；private 字段名（#$.path）
 		// 不进锚点，匹配时由通配兜底捕获。
 		// 面板底部键位提示条：20+ 种变体全部由 #Ct() 拼、renderFooter(e,t,n) 统一渲染。
 		// 锚定渲染出口给 t 过一次片段翻译，所有变体（models/providers/type to
 		// search/use for this session/kind/cancel…）一并覆盖，且新增变体无需改锚点。
-		{ name: "panel footer bar", find: "renderFooter(e,t,n){return this.chipRanges=[],n?n():ce(E.fg(\"dim\",t),e)}", replace: `renderFooter(e,t,n){t=${FN_FRAG}(t);return this.chipRanges=[],n?n():ce(E.fg("dim",t),e)}` },
+		{ name: "panel footer bar", find: "renderFooter(e,t,n){return this.chipRanges=[],n?n():ce(E.fg(\"dim\",t),e)}", replace: `renderFooter(e,t,n){t=${FN_FRAG}(t);return this.chipRanges=[],n?n():ce(E.fg("dim",t),e)}`,
+	  // v19.2.0: renderFooter 被 UKi(e,t,n)（paintPickerFooter）取代，
+	  // 提示条文案在 typeof s==="string" 分支渲染。
+	  alts: [{ find: 'function UKi(e,t,n){let r=e.props(),o=hT(e),i=[],s=o.hint===void 0?FKi(r.actions):o.hint;if(s!==null&&yTe(s).length>0){let a=typeof s==="string"?t.style("muted",s):Un(t,s);',
+	    replace: `function UKi(e,t,n){let r=e.props(),o=hT(e),i=[],s=o.hint===void 0?FKi(r.actions):o.hint;if(s!==null&&yTe(s).length>0){let a=typeof s==="string"?t.style("muted",${FN_FRAG}(s)):Un(t,s);` }] },
 		// 滚动型面板的页脚不经 renderFooter，而是自己拼好再 setText：
 		//   holdFocus(){this.#o=`<esc> to close`}
 		//   let s=`<PgUp>/<PgDn> scroll · `
@@ -1553,13 +1587,23 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		// 设置项描述中的模板串（含运行时插值）：静态扫描收不到，必须锚点包片段翻译。
 		// 模型面板标题：两种形态（All available models / <提供商> · N models），
 		// 片段翻译拼好的整串（"N models" 等在片段表内）。
-		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}` },
+		{ name: "model panel title (all)", find: "r=`All available models${n}`;break}", replace: `r=${FN_FRAG}(\`All available models\${n}\`);break}`,
+	  // v19.2.0: 标题改由 case/default 拼装，局部变量名由 n/r 变为 s/a。
+	  alts: [{ find: 'default:a=`All available models${s}`}return r(e.style("muted",` ${a}`))',
+	    replace: `default:a=${FN_FRAG}(\`All available models\${s}\`)}return r(e.style("muted",\` \${a}\`))` }] },
 		// 键位提示行（move/select/cancel/save/close…）：全仓库几十处共用 Oi()
 		// 渲染出口。label 是运行时变量，不能走 FN（verify 断言字面量实参），
 		// 也不能走 FN_FRAG（子串替换会污染含同词的英文句子，实测误伤 3000+）。
 		// 直接对运行时词典做 hasOwn 精确查表：命中即用译文，未命中回退原文。
-		{ name: "keybinding hints", find: 'i.push(le([O(r.label,"muted")]))', replace: `i.push(le([O(Object.hasOwn(__omp_i18n_d,r.label)?__omp_i18n_d[r.label]:r.label,"muted")]))`, all: true },
-		{ name: "model panel title (provider)", find: 'r=`${t.label} \\xB7 ${t.annotation??"0"} models${n}`;', replace: `r=${FN_FRAG}(\`\${t.label} \\xB7 \${t.annotation??"0"} models\${n}\`);` },
+		{ name: "keybinding hints", find: 'i.push(le([O(r.label,"muted")]))', replace: `i.push(le([O(Object.hasOwn(__omp_i18n_d,r.label)?__omp_i18n_d[r.label]:r.label,"muted")]))`, all: true,
+	  // v19.2.0: 键位行改由 Tpd(e) 渲染（role:"omp.overlay.hints" 复用），
+	  // 仍按运行时词典精确查表，不走子串替换。
+	  alts: [{ find: 'function Tpd(e){return E("row",{align:"center",gap:"xs",children:[E("kbd",{keys:e.keys},void 0,!1,void 0,this),E("text",{spans:[{s:"muted",t:e.label}]},void 0,!1,void 0,this)]},e.nodeKey,!0,void 0,this)}',
+	    replace: 'function Tpd(e){return E("row",{align:"center",gap:"xs",children:[E("kbd",{keys:e.keys},void 0,!1,void 0,this),E("text",{spans:[{s:"muted",t:Object.hasOwn(__omp_i18n_d,e.label)?__omp_i18n_d[e.label]:e.label}]},void 0,!1,void 0,this)]},e.nodeKey,!0,void 0,this)}' }] },
+		{ name: "model panel title (provider)", find: 'r=`${t.label} \\xB7 ${t.annotation??"0"} models${n}`;', replace: `r=${FN_FRAG}(\`\${t.label} \\xB7 \${t.annotation??"0"} models\${n}\`);`,
+	  // v19.2.0: 标题改由 case"provider" 的三个分支拼装（锁定/刷新中/正常）。
+	  alts: [{ find: 'case"provider":a=i.locked?`${i.label} \\xB7 not configured`:t.isRefreshing(i.providerId)?`${i.label} \\xB7 refreshing model list\\u2026`:`${i.label} \\xB7 ${i.annotation??"0"} models${s}`;break;',
+	    replace: `case"provider":a=i.locked?${FN_FRAG}(\`\${i.label} \\xB7 not configured\`):t.isRefreshing(i.providerId)?${FN_FRAG}(\`\${i.label} \\xB7 refreshing model list\\u2026\`):${FN_FRAG}(\`\${i.label} \\xB7 \${i.annotation??"0"} models\${s}\`);break;` }] },
 { name: "status sink", find: "showStatus(e,t){let s=this.ctx.chatContainer.children", replace: `showStatus(e,t){e=${FN_FRAG}(e);let s=this.ctx.chatContainer.children`,
 		  // v18.9: 局部变量 s→n 后首选精确失配，而短锚点的通配兜底会命中 320 个方法（不唯一）。
 		  // 加一条当前拼写（含后续判别式）作为 alt，精确匹配优先命中；旧版本仍走首选。
@@ -1568,14 +1612,26 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		    // 首选拼写只是 `showStatus(e,t){let s=this...` 这么一段前缀，通配兜底会命中
 		    // 380+ 处函数头（不唯一），所以这里必须给到完整判别式。
 		    { find: 'showStatus(e,t){let n=this.ctx.chatContainer.children,r=n.length>0?n[n.length-1]:void 0,s={styleFn:t?.dim??!0?(l)=>R.fg("dim",l):void 0,toast:t?.toast,action:t?.action}',
-		      replace: `showStatus(e,t){e=${FN_FRAG}(e);let n=this.ctx.chatContainer.children,r=n.length>0?n[n.length-1]:void 0,s={styleFn:t?.dim??!0?(l)=>R.fg("dim",l):void 0,toast:t?.toast,action:t?.action}` }] },
+		      replace: `showStatus(e,t){e=${FN_FRAG}(e);let n=this.ctx.chatContainer.children,r=n.length>0?n[n.length-1]:void 0,s={styleFn:t?.dim??!0?(l)=>R.fg("dim",l):void 0,toast:t?.toast,action:t?.action}` },
+		    // v19.2.0: 状态行改走 shell.transcript + Ws(YEa,{message:e,...})。
+		    { find: 'showStatus(e,t){let n=this.ctx.shell.transcript,r=t?.action,o=()=>Ws(YEa,{message:e,',
+		      replace: `showStatus(e,t){e=${FN_FRAG}(e);let n=this.ctx.shell.transcript,r=t?.action,o=()=>Ws(YEa,{message:e,` }] },
 		{ name: "warning sink", find: "showWarning(e,t){let s=new re(`Warning: ${e}`,1,0)", replace: `showWarning(e,t){e=${FN_FRAG}(e);let s=new re(\`Warning: \${e}\`,1,0)`,
 		  // v18.18: 同 error sink，改由 `ure.line("warning",e)` 渲染；第二参数变成
 		  // options（hideWithToolActivity），消息仍是第一个参数。
 		  alts: [{ find: 'showWarning(e,t){let n=ure.line("warning",e);',
-		    replace: `showWarning(e,t){let n=ure.line("warning",${FN_FRAG}(e));` }] },
-{ name: "agent hub tabs", find: "`${e(\"agents\",\"1 Agents\")}${b.fg(\"dim\",b.sep.dot)}${e(\"activity\",\"2 Activity\")}`", replace: ` ${FN_FRAG}(\`\${e(\"agents\",\"1 Agents\")}\${b.fg(\"dim\",b.sep.dot)}\${e(\"activity\",\"2 Activity\")}\`)` },
-{ name: "settings hint bar", find: "c.push(hs(b.fg(\"dim\",this.#y()),e))", replace: `c.push(hs(b.fg(\"dim\",${FN_FRAG}(this.#y())),e))` },
+		    replace: `showWarning(e,t){let n=ure.line("warning",${FN_FRAG}(e));` },
+		    // v19.2.0: 警告行改由 Ws(pvo,{tone:"warning",message:e}) 渲染。
+		    { find: 'showWarning(e,t){let n=()=>Ws(pvo,{tone:"warning",message:e});this.#c(t?.hideWithToolActivity?()=>Ws(YPe,{visible:()=>!this.ctx.hideToolActivity,children:n()}):n)}',
+		      replace: `showWarning(e,t){e=${FN_FRAG}(e);let n=()=>Ws(pvo,{tone:"warning",message:e});this.#c(t?.hideWithToolActivity?()=>Ws(YPe,{visible:()=>!this.ctx.hideToolActivity,children:n()}):n)}` }] },
+{ name: "agent hub tabs", find: "`${e(\"agents\",\"1 Agents\")}${b.fg(\"dim\",b.sep.dot)}${e(\"activity\",\"2 Activity\")}`", replace: ` ${FN_FRAG}(\`\${e(\"agents\",\"1 Agents\")}\${b.fg(\"dim\",b.sep.dot)}\${e(\"activity\",\"2 Activity\")}\`)`,
+	  // v19.2.0: 页签渲染函数 g7d 改用 e.dimSep 分隔。
+	  alts: [{ find: 'return`${r("agents","1 Agents")}${e.dimSep}${r("activity","2 Activity")}`',
+	    replace: `return ${FN_FRAG}(\`\${r("agents","1 Agents")}\${e.dimSep}\${r("activity","2 Activity")}\`)` }] },
+{ name: "settings hint bar", find: "c.push(hs(b.fg(\"dim\",this.#y()),e))", replace: `c.push(hs(b.fg(\"dim\",${FN_FRAG}(this.#y())),e))`,
+	  // v19.2.0: 底部提示条改由 xjc(r,o,w) 拼好后经 Uwt 渲染。
+	  alts: [{ find: '_.push(Uwt(n,n.fg("dim",xjc(r,o,w)),i)),_.push(eIr(n,i,n.symbols.box.bottomLeft,n.symbols.box.bottomRight))',
+	    replace: `_.push(Uwt(n,n.fg("dim",${FN_FRAG}(xjc(r,o,w))),i)),_.push(eIr(n,i,n.symbols.box.bottomLeft,n.symbols.box.bottomRight))` }] },
 { name: "tool activity hidden status", find: "`Tool activity is hidden \\u2014 show it with ${t} before expanding`", replace: `${FN_FRAG}(\`Tool activity is hidden \\u2014 show it with \${t} before expanding\`)` },
 { name: "autocomplete description resolver", find: "function KJr(e){if(\"getAutocompleteDescription\"in e&&typeof e.getAutocompleteDescription===\"function\")return e.getAutocompleteDescription()??e.description??\"\";return e.description??\"\"}", replace: `function KJr(e){var d;if(\"getAutocompleteDescription\"in e&&typeof e.getAutocompleteDescription===\"function\")d=e.getAutocompleteDescription()??e.description??\"\";else d=e.description??\"\";return ${FN_FRAG}(d)}` },
 		// Keyboard Shortcuts panel: the markdown table is built by joining rows; wrap
@@ -1607,7 +1663,10 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	// translator, which substitutes the `Agent Hub` piece inside the finished
 	// string (full-string lookup can never match a dynamic suffix).
 	{ name: "agent hub header (dot-id)", find: "`Agent Hub \\xB7 ${r.id}`", replace: `${FN_FRAG}(\`Agent Hub \\xB7 \${r.id}\`)` },
-	{ name: "agent hub header (agentId)", find: "`Agent Hub ${b.sep.dot} ${this.deps.agentId}`", replace: `${FN_FRAG}(\`Agent Hub \${b.sep.dot} \${this.deps.agentId}\`)` },
+	{ name: "agent hub header (agentId)", find: "`Agent Hub ${b.sep.dot} ${this.deps.agentId}`", replace: `${FN_FRAG}(\`Agent Hub \${b.sep.dot} \${this.deps.agentId}\`)`,
+	  // v19.2.0: 头部改由 N8d 渲染，agentId 取自 t.deps。
+	  alts: [{ find: 'o=[e.fg("accent",`Agent Hub ${r} ${n}`)]',
+	    replace: `o=[e.fg("accent",${FN_FRAG}(\`Agent Hub \${r} \${n}\`))]` }] },
 	{ name: "recent logs title", find: 'oi(this.#l,"Recent Logs")', replace: `oi(this.#l,${FN}("Recent Logs"))`,
 	  // v18.8: 标题改传 `new yot({title:...})` 构造参数。
 	  alts: [{ find: 'new yot({title:"Recent Logs"', replace: `new yot({title:${FN}("Recent Logs")` }] },
@@ -1630,19 +1689,24 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	{ name: "agents table title", find: 'new UPe("Agents",', replace: `new UPe(${FN}("Agents"),` },
 	// Panel titles passed to `OverlayPanel` via `super(...)`.
 	// v18.8: super() 第二参数新增 role id（omp.overlay.*），按新形态补 alts。
-	{ name: "queue mode title", find: 'super("Queue Mode")', replace: `super(${FN}("Queue Mode"))`,
-	  alts: [{ find: 'super("Queue Mode","omp.overlay.queue-mode")', replace: `super(${FN}("Queue Mode"),"omp.overlay.queue-mode")` }] },
-	{ name: "show images title", find: 'super("Show Images")', replace: `super(${FN}("Show Images"))`,
-	  alts: [{ find: 'super("Show Images","omp.overlay.show-images")', replace: `super(${FN}("Show Images"),"omp.overlay.show-images")` }] },
+	// v19.2.0: 上游删除了「Queue Mode」浮层（队列改为 HUD 的 Steering / After yield
+	// 分组）与「Show Images」浮层（改为设置项 Show Inline Images）。两处新文案都是
+	// 普通字面量，扫描直接翻译，不再需要锚点。
 	{ name: "debug tools title", find: 'super("Debug Tools")', replace: `super(${FN}("Debug Tools"))` },
-	{ name: "history title", find: 'super("History")', replace: `super(${FN}("History"))`,
-	  alts: [{ find: 'super("History","omp.overlay.history")', replace: `super(${FN}("History"),"omp.overlay.history")` }] },
+	// v19.2.0: 上游不再用 super("History") 画浮层边框（改为 E("picker",{title:...})），
+	// 且 "History" 由扫描直接翻译，本锚点按 obsolete 退休（旧的 role-id 拼写一并删除：
+	// 其字面量 "omp.overlay.history" 不是词典键，会让 obsolete 判定永远不成立）。
+	{ name: "history title", find: 'super("History")', replace: `super(${FN}("History"))` },
 	{ name: "theme selector title", find: 'super("Theme")', replace: `super(${FN}("Theme"))`,
-	  alts: [{ find: 'super("Theme","omp.overlay.theme")', replace: `super(${FN}("Theme"),"omp.overlay.theme")` }] },
-	{ name: "add mcp server title", find: 'super("Add MCP Server")', replace: `super(${FN}("Add MCP Server"))`,
-	  alts: [{ find: 'super("Add MCP Server","omp.overlay.mcpAdd")', replace: `super(${FN}("Add MCP Server"),"omp.overlay.mcpAdd")` }] },
-	{ name: "spend rate-limit reset title", find: 'super("Spend a saved rate-limit reset")', replace: `super(${FN}("Spend a saved rate-limit reset"))`,
-	  alts: [{ find: 'super("Spend a saved rate-limit reset","omp.overlay.reset-usage")', replace: `super(${FN}("Spend a saved rate-limit reset"),"omp.overlay.reset-usage")` }] },
+	  alts: [{ find: 'super("Theme","omp.overlay.theme")', replace: `super(${FN}("Theme"),"omp.overlay.theme")` },
+	    // v19.2.0: 主题选择并入首启场景 gWa；标题/副标题是普通字面量（扫描直接
+	    // 翻译），step:"Theme" 落在 other 角色被扫描跳过，这里补译。
+	    { find: 'step:"Theme"', replace: `step:${FN}("Theme")` }] },
+	// v19.2.0: MCP 向导改用 op(theme,"Add MCP Server",...) 与 overlay head，
+	// 两者都是普通字面量，扫描直接翻译，本锚点按 obsolete 退休。
+	{ name: "add mcp server title", find: 'super("Add MCP Server")', replace: `super(${FN}("Add MCP Server"))` },
+	// v19.2.0: 该标题改为 picker 的 title 字面量，扫描直接翻译，本锚点按 obsolete 退休。
+	{ name: "spend rate-limit reset title", find: 'super("Spend a saved rate-limit reset")', replace: `super(${FN}("Spend a saved rate-limit reset"))` },
 	// both plugin panels build their sidebar label the same way and share
 	// the `super("Plugins")` border title
 	{ name: "plugins tab label", find: "label:`${b.icon.package} Plugins`", replace: `label:\`\${b.icon.package} \${${FN}("Plugins")}\``, all: true },
@@ -1651,11 +1715,13 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 	  alts: [
 	    { find: 'super("Plugins","omp.overlay.plugins")', replace: `super(${FN}("Plugins"),"omp.overlay.plugins")` },
 	    { find: 'super("Plugins",a9e)', replace: `super(${FN}("Plugins"),a9e)` },
+	    // v19.2.0: 插件面板改用 E("picker",{title:"Plugins",...})；"Plugins" 在
+	    // 其它 ObjectProperty 位置被判 stray，扫描整词跳过，故由锚点补译。
+	    { find: 'title:"Plugins",icon:"plus",noun:"plugins"', replace: `title:${FN}("Plugins"),icon:"plus",noun:"plugins"` },
 	  ] },
 	// Providers settings page: a tab-bar section label, not the sidebar entry
-	{ name: "providers section label", find: 'new $E("Providers",', replace: `new $E(${FN}("Providers"),`,
-	  // v18.8: Providers 改为 settings tab 映射的 label 属性。
-	  alts: [{ find: 'providers:{label:"Providers",icon:"tab.providers"}', replace: `providers:{label:${FN}("Providers"),icon:"tab.providers"}` }] },
+	// v19.2.0: Providers 已是 settings 分区的 label 字面量，扫描直接翻译，本锚点按 obsolete 退休。
+	{ name: "providers section label", find: 'new $E("Providers",', replace: `new $E(${FN}("Providers"),` },
 	// Compact settings row value cell: the raw value is printed as-is
 	// (`true`/`false`/`auto`/`global`/...). Submenu rows (v18 routes every
 	// enum/number/string setting that owns an option list here) get a
@@ -1668,11 +1734,18 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		name: "settings row value labels (submenu)",
 		find: 'case"submenu":return{...s,currentValue:this.#P(e.path,t),submenu:',
 		replace: `case"submenu":return{...s,currentValue:this.#P(e.path,t),valueLabels:${FN_VLM}(e.options),submenu:`,
+		// v19.2.0: 行构造器 M() 改成 {...gt,shown:...}，选项表来自 x(ue)。
+		alts: [{ find: 'case"submenu":return{...gt,shown:R(ue.path,Me)};',
+		  replace: `case"submenu":return{...gt,currentValue:String(Me??""),valueLabels:${FN_VLM}(x(ue)),shown:R(ue.path,Me)};` }],
 	},
 	{
 		name: "settings row value cell",
 		find: 'te(String(e.currentValue??""),f,os.Omit)',
 		replace: `te(${FN_VR}(e),f,os.Omit)`,
+		// v19.2.0: 取值渲染改由 qCr(t.row,n) 承担；choice 控件自带 options
+		// （value/label 对），switch 控件的真假走全局对照表。
+		alts: [{ find: 'value:t.heading?"":qCr(t.row,n),heading:t.heading',
+		  replace: `value:t.heading?"":${FN_VR}({currentValue:qCr(t.row,n),valueLabels:${FN_VLM}(t.row?.control?.options??[]),values:t.row?.control?.k==="switch"?["true","false"]:t.row?.control?.k==="choice"?(t.row.control.options??[]).map((Ot)=>String(Ot.value)):void 0}),heading:t.heading` }],
 	},
 	// The search index feeds every keystroke through the row text; the
 	// translated option labels must be searchable too, else typing 重建 stops
@@ -1681,6 +1754,9 @@ const ANCHOR_PATCHES: readonly AnchorPatch[] = [
 		name: "settings row search index",
 		find: 'if(e.values)t+=` ${e.values.join(" ")}`;return Opn(t)}',
 		replace: `if(e.values)t+=\` \${e.values.join(" ")}\`;if(e.valueLabels)t+=\` \${Object.values(e.valueLabels).join(" ")}\`;return Opn(t)}`,
+		// v19.2.0: 索引行改用 e.cycle（选项原值）。
+		alts: [{ find: 'if(e.cycle)t+=` ${e.cycle.join(" ")}`;return t.replaceAll("\\t","   ").replace(/[\\r\\n]+/g," ").replace(/\\s+/g," ").trim()}',
+		  replace: `if(e.cycle)t+=\` \${e.cycle.join(" ")}\`;if(e.valueLabels)t+=\` \${Object.values(e.valueLabels).join(" ")}\`;return t.replaceAll("\\t","   ").replace(/[\\r\\n]+/g," ").replace(/\\s+/g," ").trim()}` }],
 	},
 ];
 
