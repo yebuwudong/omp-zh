@@ -4479,5 +4479,7 @@
  "Session .jsonl path or id (pack, moved); archive path (unpack); session ids (lease)": "会话 .jsonl 路径或 id（pack、moved）；归档路径（unpack）；会话 id（lease）",
  "Print {held, unknown} session id lists as JSON (lease)": "以 JSON 输出 {held, unknown} 会话 id 列表（lease）",
  "With list: only the keys the \"global\" (config.yml in the agent dir) or \"project\" (<cwd>/.omp) layer sets, as written": "与 list 搭配：只显示由 \"global\"（代理目录下的 config.yml）或 \"project\"（<cwd>/.omp）层设置的键，按写入原样显示",
- "Action: install | sync | native-host (native-host is launched by Chrome)": "操作：install | sync | native-host（native-host 由 Chrome 启动）"
+ "Action: install | sync | native-host (native-host is launched by Chrome)": "操作：install | sync | native-host（native-host 由 Chrome 启动）",
+ "Dictation is unavailable: the active session provider changed in offline mode.": "听写不可用：活动会话提供商在离线模式下已更改。",
+ "Goal mode is unavailable in a --no-tools session.": "目标模式在 --no-tools 会话中不可用。"
 }
